@@ -1,0 +1,88 @@
+Build a mobile‑first responsive website called Budget Nikal (works great on iPhone and laptop). Keep the UI clean and modern. Replit may choose any suitable stack. Deliver a complete, deployable website with the features below and seed demo data so it’s useful immediately. Footer text must show: “A product by DEVPOOL.”
+
+Core requirements (do all of these)
+1) Accounts & Settings
+
+Manual sign up / sign in with username or email + password. Passwords must be securely hashed. Each user’s data is isolated.
+
+Settings: user chooses display currency from the full list of world currencies (ISO 4217). Amounts display using that currency’s format (symbol + thousands separators). Internally store numeric values safely (no floating errors).
+
+2) Credit Cards (dynamic cycles) & Loans
+
+Users can add credit cards with: nickname (e.g., “JS Bank”, “Alfalah Bank”), optional issuer/last4, statement generation date and due date (the first known pair for any month).
+
+Automatic prediction for future months: remember the day difference between statement and due; for the next month, advance the statement date by one month (clamp to month end if needed) and set due date by adding the saved day difference.
+
+For each month, users create a Card Statement with: statement date, due date, total amount due, minimum due, available limit (editable), status (pending/done), paid date.
+
+Loans: simple loan entry (e.g., Faysal installment) with name, installment amount, next due date, marked as recurring; appears in expenses like a regular item.
+
+3) Monthly Budget Plan
+
+A Monthly Budget (by year & month) holds two lists:
+
+Income items: source, amount, recurring?, status, paid date?.
+
+Expense items: label, amount, recurring?, status, paid date?, and a kind = REGULAR | CARD_BILL | LOAN (links to a card statement or loan if applicable).
+
+Totals & math (must match exactly):
+
+cardsTotal = sum(CardStatements.totalDue)
+
+nonCardExpensesTotal = sum(Expenses where kind != CARD_BILL)
+
+incomeTotal = sum(Income)
+
+afterCardPayments = incomeTotal - cardsTotal
+
+need = max(0, nonCardExpensesTotal - afterCardPayments)
+
+Every item and statement supports toggle status (Pending/Done). When set to Done, record actual payment date.
+
+4) Cash‑Out Planner ("Nikalwane … se")
+
+Purpose: plan withdrawals from one or both cards to cover need, without exceeding each card’s available limit.
+
+Inputs: current month’s incomeTotal, cardsTotal, nonCardExpensesTotal, and each card’s availableLimit.
+
+Algorithm: suggest a split automatically (e.g., fill from the card with later due date first; fallback to card with larger available limit). Allow the user to adjust amounts with sliders/inputs. Validate not exceeding available limits.
+
+Show the resulting cushion = incomeTotal - cardsTotal + sum(withdrawals).
+
+If the user applies the plan, create expenses labeled “Cash‑out – {CardNickname}” for those amounts in the current month.
+
+5) Recurring & Next Month
+
+Users can mark any income/expense as recurring.
+
+Create Next Month: copies all recurring items (and loans) into the next month with status=pending and cleared paid date. Pre‑fill each card’s next predicted statement & due dates; users can edit.
+
+6) Read‑only Overview (no public sharing yet)
+
+A read‑only monthly view (for the logged‑in user only) that shows totals, lists, and statuses in one place. No external sharing for now.
+
+7) UX/UI essentials
+
+Mobile‑first responsive layout, large touch targets, clear totals at the top (KPI cards for Income, Cards, Non‑card, After cards, Need).
+
+Simple month switcher (e.g., “October 2025” with previous/next controls).
+
+Fast toggles for marking items/statement Done, showing the paid date.
+
+Footer on every page: “A product by DEVPOOL.”
+
+8) Seed data
+
+Include seeded September and October sample months based on the examples (approximate values are fine): incomes from “Fuentes”, expenses like Kameeti, Flat, Electric, Faysal installment (loan), Kharcha, Begum, Mom; two cards (JS Bank, Alfalah Bank) with realistic statements/dues and totals.
+
+9) Out of scope for now (do NOT build yet)
+
+Reminders/notifications, public sharing, language toggle, offline mode, paste‑notes importer, CSV export. (Design the data so these can be added later.)
+
+10) Deliverables & behavior
+
+A working website that can be deployed (Replit can choose deployment target).
+
+Clear README with minimal environment instructions and how to run seed and start the site.
+
+All calculations and behaviors above must be implemented exactly.
