@@ -5,39 +5,59 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { calculateDayDifference, getDayOfMonth } from "@/lib/dateUtils";
+import type { CreditCard } from "@shared/schema";
 
 interface AddCardDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdd: (data: { 
-    nickname: string; 
+  onAdd: (data: {
+    nickname: string;
     issuer?: string;
     last4?: string;
     statementDay: number;
     dueDay: number;
     dayDifference: number;
   }) => void;
+  onUpdate?: (id: string, data: {
+    nickname: string;
+    issuer?: string;
+    last4?: string;
+    statementDay: number;
+    dueDay: number;
+    dayDifference: number;
+  }) => void;
+  initialData?: CreditCard | null;
   isPending?: boolean;
 }
 
-export function AddCardDialog({ open, onOpenChange, onAdd, isPending }: AddCardDialogProps) {
+export function AddCardDialog({ open, onOpenChange, onAdd, onUpdate, initialData, isPending }: AddCardDialogProps) {
   const [nickname, setNickname] = useState("");
   const [issuer, setIssuer] = useState("");
   const [last4, setLast4] = useState("");
   const [statementDate, setStatementDate] = useState("");
   const [dueDate, setDueDate] = useState("");
 
-  // Reset form when dialog opens
+  // Pre-fill form when editing, reset when adding new
   useEffect(() => {
-    if (open) {
-      // Reset form state when dialog opens
+    if (open && initialData) {
+      setNickname(initialData.nickname);
+      setIssuer(initialData.issuer || "");
+      setLast4(initialData.last4 || "");
+      // For edit mode, we'll use the day values directly to create sample dates
+      // The actual statementDay and dueDay will be preserved from initialData
+      const year = new Date().getFullYear();
+      const month = new Date().getMonth() + 1;
+      setStatementDate(`${year}-${String(month).padStart(2, '0')}-${String(initialData.statementDay).padStart(2, '0')}`);
+      setDueDate(`${year}-${String(month).padStart(2, '0')}-${String(initialData.dueDay).padStart(2, '0')}`);
+    } else if (open && !initialData) {
+      // Reset form when adding new
       setNickname("");
       setIssuer("");
       setLast4("");
       setStatementDate("");
       setDueDate("");
     }
-  }, [open]);
+  }, [open, initialData]);
 
   // Reset form when dialog closes
   const handleOpenChange = (newOpen: boolean) => {
@@ -57,15 +77,23 @@ export function AddCardDialog({ open, onOpenChange, onAdd, isPending }: AddCardD
 
     console.log("Submitting card:", { nickname, statementDay, dueDay, dayDifference });
 
-    onAdd({
+    const data = {
       nickname: nickname.trim(),
       issuer: issuer.trim() || undefined,
       last4: last4.trim() || undefined,
       statementDay,
       dueDay,
       dayDifference,
-    });
+    };
+
+    if (initialData && onUpdate) {
+      onUpdate(initialData.id, data);
+    } else {
+      onAdd(data);
+    }
   };
+
+  const isEditMode = !!initialData;
 
   // Check if form is valid
   const isFormValid = nickname.trim().length > 0 && statementDate.length > 0 && dueDate.length > 0;
@@ -89,7 +117,7 @@ export function AddCardDialog({ open, onOpenChange, onAdd, isPending }: AddCardD
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Add Credit Card</DialogTitle>
+            <DialogTitle>{isEditMode ? 'Edit Credit Card' : 'Add Credit Card'}</DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
@@ -189,7 +217,7 @@ export function AddCardDialog({ open, onOpenChange, onAdd, isPending }: AddCardD
               data-testid="button-submit-card"
             >
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {isPending ? "Adding..." : "Add Card"}
+              {isPending ? (isEditMode ? "Updating..." : "Adding...") : (isEditMode ? "Update Card" : "Add Card")}
             </Button>
           </DialogFooter>
         </form>

@@ -115,7 +115,7 @@ export class DatabaseStorage implements IStorage {
   async updateCreditCard(id: string, card: Partial<InsertCreditCard>): Promise<void> {
     await db
       .update(creditCards)
-      .set({ ...card, updatedAt: new Date() })
+      .set({ ...card })
       .where(eq(creditCards.id, id));
   }
 
@@ -190,7 +190,7 @@ export class DatabaseStorage implements IStorage {
   async updateLoan(id: string, loan: Partial<InsertLoan>): Promise<void> {
     await db
       .update(loans)
-      .set({ ...loan, updatedAt: new Date() })
+      .set({ ...loan })
       .where(eq(loans.id, id));
   }
 

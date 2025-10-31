@@ -269,6 +269,33 @@ export default function Home() {
     },
   });
 
+  // Update income mutation
+  const updateIncome = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: { source: string; amount: string; recurring: boolean } }) => {
+      await apiRequest('PATCH', `/api/incomes/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/budgets', year, month] });
+      setShowAddIncome(false);
+      setEditingIncome(null);
+      toast({ title: "Income updated successfully" });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({ title: "Error", description: "Failed to update income", variant: "destructive" });
+    },
+  });
+
   // Delete income mutation
   const deleteIncome = useMutation({
     mutationFn: async (id: string) => {
@@ -319,6 +346,33 @@ export default function Home() {
     },
   });
 
+  // Update expense mutation
+  const updateExpense = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: { label: string; amount: string; recurring: boolean } }) => {
+      await apiRequest('PATCH', `/api/expenses/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/budgets', year, month] });
+      setShowAddExpense(false);
+      setEditingExpense(null);
+      toast({ title: "Expense updated successfully" });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({ title: "Error", description: "Failed to update expense", variant: "destructive" });
+    },
+  });
+
   // Delete expense mutation
   const deleteExpense = useMutation({
     mutationFn: async (id: string) => {
@@ -344,6 +398,33 @@ export default function Home() {
     },
   });
 
+  // Update credit card mutation
+  const updateCreditCard = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      await apiRequest('PATCH', `/api/cards/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/cards'] });
+      setShowAddCard(false);
+      setEditingCard(null);
+      toast({ title: "Credit card updated successfully" });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({ title: "Error", description: "Failed to update card", variant: "destructive" });
+    },
+  });
+
   // Delete credit card mutation
   const deleteCreditCard = useMutation({
     mutationFn: async (id: string) => {
@@ -366,6 +447,34 @@ export default function Home() {
         return;
       }
       toast({ title: "Error", description: "Failed to delete card", variant: "destructive" });
+    },
+  });
+
+  // Update loan mutation
+  const updateLoan = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      await apiRequest('PATCH', `/api/loans/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/loans'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/budgets', year, month] });
+      setShowAddLoan(false);
+      setEditingLoan(null);
+      toast({ title: "Loan updated successfully" });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({ title: "Error", description: "Failed to update loan", variant: "destructive" });
     },
   });
 
@@ -551,7 +660,7 @@ export default function Home() {
                 onAdd={() => setShowAddIncome(true)}
                 onToggleStatus={(id, status) => toggleIncomeStatus.mutate({ id, status })}
                 onEdit={(income) => {
-                  setEditingIncome(income);
+                  setEditingIncome(income as Income);
                   setShowAddIncome(true);
                 }}
                 onDelete={(id) => {
@@ -567,7 +676,7 @@ export default function Home() {
                 onAdd={() => setShowAddExpense(true)}
                 onToggleStatus={(id, status) => toggleExpenseStatus.mutate({ id, status })}
                 onEdit={(expense) => {
-                  setEditingExpense(expense);
+                  setEditingExpense(expense as Expense);
                   setShowAddExpense(true);
                 }}
                 onDelete={(id) => {
@@ -583,12 +692,30 @@ export default function Home() {
               <CardsList
                 cards={cards}
                 onAdd={() => setShowAddCard(true)}
+                onEdit={(card) => {
+                  setEditingCard(card as Card);
+                  setShowAddCard(true);
+                }}
+                onDelete={(id) => {
+                  if (confirm('Are you sure you want to delete this credit card?')) {
+                    deleteCreditCard.mutate(id);
+                  }
+                }}
               />
-              
+
               <LoansList
                 loans={loans}
                 currencyCode={currencyCode}
                 onAdd={() => setShowAddLoan(true)}
+                onEdit={(loan) => {
+                  setEditingLoan(loan as Loan);
+                  setShowAddLoan(true);
+                }}
+                onDelete={(id) => {
+                  if (confirm('Are you sure you want to delete this loan?')) {
+                    deleteLoan.mutate(id);
+                  }
+                }}
               />
             </div>
 
@@ -618,30 +745,50 @@ export default function Home() {
       {/* Dialogs */}
       <AddIncomeDialog
         open={showAddIncome}
-        onOpenChange={setShowAddIncome}
+        onOpenChange={(open) => {
+          setShowAddIncome(open);
+          if (!open) setEditingIncome(null);
+        }}
         onAdd={(data) => addIncome.mutate(data)}
-        isPending={addIncome.isPending}
+        onUpdate={(id, data) => updateIncome.mutate({ id, data })}
+        initialData={editingIncome}
+        isPending={addIncome.isPending || updateIncome.isPending}
       />
 
       <AddExpenseDialog
         open={showAddExpense}
-        onOpenChange={setShowAddExpense}
+        onOpenChange={(open) => {
+          setShowAddExpense(open);
+          if (!open) setEditingExpense(null);
+        }}
         onAdd={(data) => addExpense.mutate(data)}
-        isPending={addExpense.isPending}
+        onUpdate={(id, data) => updateExpense.mutate({ id, data })}
+        initialData={editingExpense}
+        isPending={addExpense.isPending || updateExpense.isPending}
       />
 
       <AddCardDialog
         open={showAddCard}
-        onOpenChange={setShowAddCard}
+        onOpenChange={(open) => {
+          setShowAddCard(open);
+          if (!open) setEditingCard(null);
+        }}
         onAdd={(data) => addCard.mutate(data)}
-        isPending={addCard.isPending}
+        onUpdate={(id, data) => updateCreditCard.mutate({ id, data })}
+        initialData={editingCard}
+        isPending={addCard.isPending || updateCreditCard.isPending}
       />
 
       <AddLoanDialog
         open={showAddLoan}
-        onOpenChange={setShowAddLoan}
+        onOpenChange={(open) => {
+          setShowAddLoan(open);
+          if (!open) setEditingLoan(null);
+        }}
         onAdd={(data) => addLoan.mutate(data)}
-        isPending={addLoan.isPending}
+        onUpdate={(id, data) => updateLoan.mutate({ id, data })}
+        initialData={editingLoan}
+        isPending={addLoan.isPending || updateLoan.isPending}
       />
 
       <CashOutPlanner

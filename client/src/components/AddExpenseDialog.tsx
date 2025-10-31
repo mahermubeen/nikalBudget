@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,37 +6,55 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2 } from "lucide-react";
 import { parseAmount } from "@/lib/currency";
+import type { Expense } from "@shared/schema";
 
 interface AddExpenseDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAdd: (data: { label: string; amount: string; recurring: boolean }) => void;
+  onUpdate?: (id: string, data: { label: string; amount: string; recurring: boolean }) => void;
+  initialData?: Expense | null;
   isPending?: boolean;
 }
 
-export function AddExpenseDialog({ open, onOpenChange, onAdd, isPending }: AddExpenseDialogProps) {
+export function AddExpenseDialog({ open, onOpenChange, onAdd, onUpdate, initialData, isPending }: AddExpenseDialogProps) {
   const [label, setLabel] = useState("");
   const [amount, setAmount] = useState("");
   const [recurring, setRecurring] = useState(false);
 
+  // Pre-fill form when editing
+  useEffect(() => {
+    if (open && initialData) {
+      setLabel(initialData.label);
+      setAmount(initialData.amount);
+      setRecurring(initialData.recurring);
+    } else if (open && !initialData) {
+      // Reset form when adding new
+      setLabel("");
+      setAmount("");
+      setRecurring(false);
+    }
+  }, [open, initialData]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!label.trim() || !amount) return;
-    
-    onAdd({ label: label.trim(), amount, recurring });
-    
-    // Reset form
-    setLabel("");
-    setAmount("");
-    setRecurring(false);
+
+    if (initialData && onUpdate) {
+      onUpdate(initialData.id, { label: label.trim(), amount, recurring });
+    } else {
+      onAdd({ label: label.trim(), amount, recurring });
+    }
   };
+
+  const isEditMode = !!initialData;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Add Expense</DialogTitle>
+            <DialogTitle>{isEditMode ? 'Edit Expense' : 'Add Expense'}</DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
@@ -99,7 +117,7 @@ export function AddExpenseDialog({ open, onOpenChange, onAdd, isPending }: AddEx
               data-testid="button-submit-expense"
             >
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Add Expense
+              {isEditMode ? 'Update Expense' : 'Add Expense'}
             </Button>
           </DialogFooter>
         </form>

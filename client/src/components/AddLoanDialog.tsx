@@ -1,49 +1,73 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { parseAmount } from "@/lib/currency";
+import type { Loan } from "@shared/schema";
 
 interface AddLoanDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdd: (data: { 
-    name: string; 
+  onAdd: (data: {
+    name: string;
     installmentAmount: string;
     nextDueDate: string;
   }) => void;
+  onUpdate?: (id: string, data: {
+    name: string;
+    installmentAmount: string;
+    nextDueDate: string;
+  }) => void;
+  initialData?: Loan | null;
   isPending?: boolean;
 }
 
-export function AddLoanDialog({ open, onOpenChange, onAdd, isPending }: AddLoanDialogProps) {
+export function AddLoanDialog({ open, onOpenChange, onAdd, onUpdate, initialData, isPending }: AddLoanDialogProps) {
   const [name, setName] = useState("");
   const [installmentAmount, setInstallmentAmount] = useState("");
   const [nextDueDate, setNextDueDate] = useState("");
 
+  // Pre-fill form when editing
+  useEffect(() => {
+    if (open && initialData) {
+      setName(initialData.name);
+      setInstallmentAmount(initialData.installmentAmount);
+      setNextDueDate(initialData.nextDueDate);
+    } else if (open && !initialData) {
+      // Reset form when adding new
+      setName("");
+      setInstallmentAmount("");
+      setNextDueDate("");
+    }
+  }, [open, initialData]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !installmentAmount || !nextDueDate) return;
-    
-    onAdd({ 
-      name: name.trim(), 
+
+    const data = {
+      name: name.trim(),
       installmentAmount,
       nextDueDate,
-    });
-    
-    // Reset form
-    setName("");
-    setInstallmentAmount("");
-    setNextDueDate("");
+    };
+
+    if (initialData && onUpdate) {
+      onUpdate(initialData.id, data);
+    } else {
+      onAdd(data);
+    }
   };
+
+  const isEditMode = !!initialData;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Add Loan</DialogTitle>
+            <DialogTitle>{isEditMode ? 'Edit Loan' : 'Add Loan'}</DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
@@ -111,7 +135,7 @@ export function AddLoanDialog({ open, onOpenChange, onAdd, isPending }: AddLoanD
               data-testid="button-submit-loan"
             >
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Add Loan
+              {isEditMode ? 'Update Loan' : 'Add Loan'}
             </Button>
           </DialogFooter>
         </form>

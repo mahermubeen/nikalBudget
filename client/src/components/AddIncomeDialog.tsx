@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,37 +6,55 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2 } from "lucide-react";
 import { parseAmount } from "@/lib/currency";
+import type { Income } from "@shared/schema";
 
 interface AddIncomeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAdd: (data: { source: string; amount: string; recurring: boolean }) => void;
+  onUpdate?: (id: string, data: { source: string; amount: string; recurring: boolean }) => void;
+  initialData?: Income | null;
   isPending?: boolean;
 }
 
-export function AddIncomeDialog({ open, onOpenChange, onAdd, isPending }: AddIncomeDialogProps) {
+export function AddIncomeDialog({ open, onOpenChange, onAdd, onUpdate, initialData, isPending }: AddIncomeDialogProps) {
   const [source, setSource] = useState("");
   const [amount, setAmount] = useState("");
   const [recurring, setRecurring] = useState(false);
 
+  // Pre-fill form when editing
+  useEffect(() => {
+    if (open && initialData) {
+      setSource(initialData.source);
+      setAmount(initialData.amount);
+      setRecurring(initialData.recurring);
+    } else if (open && !initialData) {
+      // Reset form when adding new
+      setSource("");
+      setAmount("");
+      setRecurring(false);
+    }
+  }, [open, initialData]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!source.trim() || !amount) return;
-    
-    onAdd({ source: source.trim(), amount, recurring });
-    
-    // Reset form
-    setSource("");
-    setAmount("");
-    setRecurring(false);
+
+    if (initialData && onUpdate) {
+      onUpdate(initialData.id, { source: source.trim(), amount, recurring });
+    } else {
+      onAdd({ source: source.trim(), amount, recurring });
+    }
   };
+
+  const isEditMode = !!initialData;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Add Income</DialogTitle>
+            <DialogTitle>{isEditMode ? 'Edit Income' : 'Add Income'}</DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
@@ -99,7 +117,7 @@ export function AddIncomeDialog({ open, onOpenChange, onAdd, isPending }: AddInc
               data-testid="button-submit-income"
             >
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Add Income
+              {isEditMode ? 'Update Income' : 'Add Income'}
             </Button>
           </DialogFooter>
         </form>
