@@ -1,0 +1,448 @@
+import type { Express } from "express";
+import { createServer, type Server } from "http";
+import { storage } from "./storage";
+import { setupAuth, isAuthenticated } from "./replitAuth";
+import { z } from "zod";
+
+export async function registerRoutes(app: Express): Promise<Server> {
+  // Auth middleware
+  await setupAuth(app);
+
+  // Auth routes
+  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      res.json(user);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  // Settings - Update currency
+  app.patch('/api/settings/currency', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { currencyCode } = req.body;
+
+      if (!currencyCode) {
+        return res.status(400).json({ message: "Currency code is required" });
+      }
+
+      await storage.updateUserCurrency(userId, currencyCode);
+      res.json({ message: "Currency updated successfully" });
+    } catch (error) {
+      console.error("Error updating currency:", error);
+      res.status(500).json({ message: "Failed to update currency" });
+    }
+  });
+
+  // Credit Cards - Get all
+  app.get('/api/cards', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const cards = await storage.getCreditCards(userId);
+      res.json({ cards });
+    } catch (error) {
+      console.error("Error fetching cards:", error);
+      res.status(500).json({ message: "Failed to fetch cards" });
+    }
+  });
+
+  // Credit Cards - Create
+  app.post('/api/cards', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { nickname, issuer, last4, statementDay, dueDay, dayDifference } = req.body;
+
+      if (!nickname || !statementDay || !dueDay || dayDifference === undefined) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      const card = await storage.createCreditCard(userId, {
+        nickname,
+        issuer,
+        last4,
+        statementDay,
+        dueDay,
+        dayDifference,
+      });
+
+      res.json({ card });
+    } catch (error) {
+      console.error("Error creating card:", error);
+      res.status(500).json({ message: "Failed to create card" });
+    }
+  });
+
+  // Loans - Get all
+  app.get('/api/loans', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const loans = await storage.getLoans(userId);
+      res.json({ loans });
+    } catch (error) {
+      console.error("Error fetching loans:", error);
+      res.status(500).json({ message: "Failed to fetch loans" });
+    }
+  });
+
+  // Loans - Create
+  app.post('/api/loans', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { name, installmentAmount, nextDueDate } = req.body;
+
+      if (!name || !installmentAmount || !nextDueDate) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      const loan = await storage.createLoan(userId, {
+        name,
+        installmentAmount,
+        nextDueDate,
+        recurring: true, // Loans are always recurring
+      });
+
+      res.json({ loan });
+    } catch (error) {
+      console.error("Error creating loan:", error);
+      res.status(500).json({ message: "Failed to create loan" });
+    }
+  });
+
+  // Budgets - Get budget for specific month with all data
+  app.get('/api/budgets/:year/:month', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const year = parseInt(req.params.year);
+      const month = parseInt(req.params.month);
+
+      if (isNaN(year) || isNaN(month) || month < 1 || month > 12) {
+        return res.status(400).json({ message: "Invalid year or month" });
+      }
+
+      // Get or create budget
+      let budget = await storage.getBudget(userId, year, month);
+      if (!budget) {
+        budget = await storage.createBudget({ userId, year, month });
+      }
+
+      // Get all related data
+      const incomes = await storage.getIncomes(budget.id);
+      const expenses = await storage.getExpenses(budget.id);
+      const cardStatements = await storage.getCardStatementsForMonth(userId, year, month);
+
+      // Calculate totals
+      const incomeTotal = incomes.reduce((sum, inc) => sum + parseFloat(inc.amount), 0);
+      const cardsTotal = cardStatements.reduce((sum, stmt) => sum + parseFloat(stmt.totalDue), 0);
+      const nonCardExpensesTotal = expenses
+        .filter(exp => exp.kind !== 'CARD_BILL')
+        .reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+      const afterCardPayments = incomeTotal - cardsTotal;
+      const need = Math.max(0, nonCardExpensesTotal - afterCardPayments);
+
+      res.json({
+        budget,
+        incomes,
+        expenses,
+        cardStatements,
+        totals: {
+          incomeTotal,
+          cardsTotal,
+          nonCardExpensesTotal,
+          afterCardPayments,
+          need,
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching budget:", error);
+      res.status(500).json({ message: "Failed to fetch budget" });
+    }
+  });
+
+  // Income - Create
+  app.post('/api/budgets/:year/:month/incomes', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const year = parseInt(req.params.year);
+      const month = parseInt(req.params.month);
+      const { source, amount, recurring } = req.body;
+
+      if (!source || !amount) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      // Get or create budget
+      let budget = await storage.getBudget(userId, year, month);
+      if (!budget) {
+        budget = await storage.createBudget({ userId, year, month });
+      }
+
+      const income = await storage.createIncome({
+        budgetId: budget.id,
+        source,
+        amount,
+        recurring: recurring || false,
+        status: 'pending',
+        paidDate: null,
+      });
+
+      res.json({ income });
+    } catch (error) {
+      console.error("Error creating income:", error);
+      res.status(500).json({ message: "Failed to create income" });
+    }
+  });
+
+  // Income - Update status
+  app.patch('/api/incomes/:id/status', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+
+      if (!status || (status !== 'pending' && status !== 'done')) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+
+      await storage.updateIncomeStatus(id, status);
+      res.json({ message: "Status updated successfully" });
+    } catch (error) {
+      console.error("Error updating income status:", error);
+      res.status(500).json({ message: "Failed to update status" });
+    }
+  });
+
+  // Expense - Create
+  app.post('/api/budgets/:year/:month/expenses', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const year = parseInt(req.params.year);
+      const month = parseInt(req.params.month);
+      const { label, amount, recurring } = req.body;
+
+      if (!label || !amount) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      // Get or create budget
+      let budget = await storage.getBudget(userId, year, month);
+      if (!budget) {
+        budget = await storage.createBudget({ userId, year, month });
+      }
+
+      const expense = await storage.createExpense({
+        budgetId: budget.id,
+        label,
+        amount,
+        recurring: recurring || false,
+        status: 'pending',
+        paidDate: null,
+        kind: 'REGULAR',
+        linkedCardStatementId: null,
+        linkedLoanId: null,
+      });
+
+      res.json({ expense });
+    } catch (error) {
+      console.error("Error creating expense:", error);
+      res.status(500).json({ message: "Failed to create expense" });
+    }
+  });
+
+  // Expense - Update status
+  app.patch('/api/expenses/:id/status', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+
+      if (!status || (status !== 'pending' && status !== 'done')) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+
+      await storage.updateExpenseStatus(id, status);
+      res.json({ message: "Status updated successfully" });
+    } catch (error) {
+      console.error("Error updating expense status:", error);
+      res.status(500).json({ message: "Failed to update status" });
+    }
+  });
+
+  // Cash-Out Planner - Apply withdrawals
+  app.post('/api/budgets/:year/:month/cash-out', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const year = parseInt(req.params.year);
+      const month = parseInt(req.params.month);
+      const { withdrawals } = req.body;
+
+      if (!Array.isArray(withdrawals) || withdrawals.length === 0) {
+        return res.status(400).json({ message: "Invalid withdrawals data" });
+      }
+
+      // Get or create budget
+      let budget = await storage.getBudget(userId, year, month);
+      if (!budget) {
+        budget = await storage.createBudget({ userId, year, month });
+      }
+
+      // Get all cards to validate and get nicknames
+      const allCards = await storage.getCreditCards(userId);
+      const cardMap = new Map(allCards.map(c => [c.id, c]));
+
+      // Create expense for each withdrawal
+      for (const withdrawal of withdrawals) {
+        const { cardId, amount } = withdrawal;
+        const card = cardMap.get(cardId);
+        
+        if (!card) continue;
+        if (amount <= 0) continue;
+
+        await storage.createExpense({
+          budgetId: budget.id,
+          label: `Cash-out – ${card.nickname}`,
+          amount: amount.toString(),
+          recurring: false,
+          status: 'pending',
+          paidDate: null,
+          kind: 'REGULAR',
+          linkedCardStatementId: null,
+          linkedLoanId: null,
+        });
+      }
+
+      res.json({ message: "Cash-out plan applied successfully" });
+    } catch (error) {
+      console.error("Error applying cash-out plan:", error);
+      res.status(500).json({ message: "Failed to apply cash-out plan" });
+    }
+  });
+
+  // Create Next Month
+  app.post('/api/budgets/:year/:month/create-next', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const year = parseInt(req.params.year);
+      const month = parseInt(req.params.month);
+
+      if (isNaN(year) || isNaN(month) || month < 1 || month > 12) {
+        return res.status(400).json({ message: "Invalid year or month" });
+      }
+
+      // Calculate next month
+      let nextYear = year;
+      let nextMonth = month + 1;
+      if (nextMonth > 12) {
+        nextMonth = 1;
+        nextYear += 1;
+      }
+
+      // Check if next month budget already exists
+      const existingBudget = await storage.getBudget(userId, nextYear, nextMonth);
+      if (existingBudget) {
+        return res.status(400).json({ message: "Next month budget already exists" });
+      }
+
+      // Create next month budget
+      const newBudget = await storage.createBudget({ userId, year: nextYear, month: nextMonth });
+
+      // Get recurring incomes and expenses from current month
+      const recurringIncomes = await storage.getRecurringIncomes(userId, year, month);
+      const recurringExpenses = await storage.getRecurringExpenses(userId, year, month);
+
+      // Copy recurring incomes to next month
+      for (const income of recurringIncomes) {
+        await storage.createIncome({
+          budgetId: newBudget.id,
+          source: income.source,
+          amount: income.amount,
+          recurring: true,
+          status: 'pending',
+          paidDate: null,
+        });
+      }
+
+      // Copy recurring expenses to next month
+      for (const expense of recurringExpenses) {
+        await storage.createExpense({
+          budgetId: newBudget.id,
+          label: expense.label,
+          amount: expense.amount,
+          recurring: true,
+          status: 'pending',
+          paidDate: null,
+          kind: 'REGULAR',
+          linkedCardStatementId: null,
+          linkedLoanId: null,
+        });
+      }
+
+      // Get all loans and add as expenses
+      const loans = await storage.getLoans(userId);
+      for (const loan of loans) {
+        await storage.createExpense({
+          budgetId: newBudget.id,
+          label: loan.name,
+          amount: loan.installmentAmount,
+          recurring: true,
+          status: 'pending',
+          paidDate: null,
+          kind: 'LOAN',
+          linkedCardStatementId: null,
+          linkedLoanId: loan.id,
+        });
+      }
+
+      // Get all credit cards and predict next month's statement dates
+      const cards = await storage.getCreditCards(userId);
+      for (const card of cards) {
+        // Create date string for current month's statement day
+        const currentStatementDay = Math.min(card.statementDay, getDaysInMonth(year, month));
+        const currentDueDay = Math.min(card.dueDay, getDaysInMonth(year, month));
+        
+        // For next month, predict statement and due dates
+        const nextStatementDay = Math.min(card.statementDay, getDaysInMonth(nextYear, nextMonth));
+        
+        // Calculate next month due date by adding day difference
+        const statementDate = new Date(nextYear, nextMonth - 1, nextStatementDay);
+        const dueDate = new Date(statementDate);
+        dueDate.setDate(dueDate.getDate() + card.dayDifference);
+        
+        // Create card statement with default values (user can edit)
+        await storage.createCardStatement({
+          cardId: card.id,
+          year: nextYear,
+          month: nextMonth,
+          statementDate: formatDate(statementDate),
+          dueDate: formatDate(dueDate),
+          totalDue: '0',
+          minimumDue: '0',
+          availableLimit: '0',
+          status: 'pending',
+          paidDate: null,
+        });
+      }
+
+      res.json({ message: "Next month created successfully", budget: newBudget });
+    } catch (error) {
+      console.error("Error creating next month:", error);
+      res.status(500).json({ message: "Failed to create next month" });
+    }
+  });
+
+  const httpServer = createServer(app);
+  return httpServer;
+}
+
+// Helper functions
+function getDaysInMonth(year: number, month: number): number {
+  return new Date(year, month, 0).getDate();
+}
+
+function formatDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
