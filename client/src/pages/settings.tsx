@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -16,10 +17,11 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { currencies } from "@/lib/currency";
-import { Loader2 } from "lucide-react";
+import { Loader2, ArrowLeft } from "lucide-react";
 import { isUnauthorizedError } from "@/lib/authUtils";
 
 export default function Settings() {
+  const [, navigate] = useLocation();
   const { user, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const [selectedCurrency, setSelectedCurrency] = useState<string>('PKR');
@@ -102,6 +104,15 @@ export default function Settings() {
       <main className="flex-1 container mx-auto px-4 py-8 max-w-2xl">
         <div className="space-y-6">
           <div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate('/')}
+              className="mb-4 -ml-2"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Dashboard
+            </Button>
             <h1 className="text-3xl font-bold">Settings</h1>
             <p className="text-muted-foreground mt-1">
               Manage your account preferences

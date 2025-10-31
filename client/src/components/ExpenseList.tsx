@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, CreditCard, DollarSign } from "lucide-react";
+import { Plus, CreditCard, DollarSign, Pencil, Trash2 } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { formatDate } from "@/lib/dateUtils";
 import { StatusBadge } from "./StatusBadge";
@@ -23,9 +23,11 @@ interface ExpenseListProps {
   currencyCode: string;
   onAdd: () => void;
   onToggleStatus: (id: string, currentStatus: string) => void;
+  onEdit: (expense: Expense) => void;
+  onDelete: (id: string) => void;
 }
 
-export function ExpenseList({ expenses, currencyCode, onAdd, onToggleStatus }: ExpenseListProps) {
+export function ExpenseList({ expenses, currencyCode, onAdd, onToggleStatus, onEdit, onDelete }: ExpenseListProps) {
   const total = expenses.reduce((sum, exp) => sum + parseFloat(exp.amount || '0'), 0);
   const nonCardTotal = expenses
     .filter(exp => exp.kind !== 'CARD_BILL')
@@ -101,10 +103,33 @@ export function ExpenseList({ expenses, currencyCode, onAdd, onToggleStatus }: E
                     )}
                   </div>
                 </div>
-                
+
                 <div className="font-mono font-semibold text-destructive" data-testid={`text-expense-amount-${expense.id}`}>
                   {formatCurrency(expense.amount, currencyCode)}
                 </div>
+
+                {expense.kind === 'REGULAR' && (
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => onEdit(expense)}
+                      data-testid={`button-edit-expense-${expense.id}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:text-destructive"
+                      onClick={() => onDelete(expense.id)}
+                      data-testid={`button-delete-expense-${expense.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
               </div>
             ))}
           </div>

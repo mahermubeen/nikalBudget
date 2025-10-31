@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated } from "./replitAuth";
+import { setupAuth, isAuthenticated, getUserId } from "./supabaseAuth";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -11,7 +11,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const user = await storage.getUser(userId);
       res.json(user);
     } catch (error) {
@@ -23,7 +23,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Settings - Update currency
   app.patch('/api/settings/currency', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const { currencyCode } = req.body;
 
       if (!currencyCode) {
@@ -41,7 +41,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Credit Cards - Get all
   app.get('/api/cards', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const cards = await storage.getCreditCards(userId);
       res.json({ cards });
     } catch (error) {
@@ -53,7 +53,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Credit Cards - Create
   app.post('/api/cards', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const { nickname, issuer, last4, statementDay, dueDay, dayDifference } = req.body;
 
       if (!nickname || !statementDay || !dueDay || dayDifference === undefined) {
@@ -76,10 +76,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Credit Cards - Update
+  app.patch('/api/cards/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { nickname, issuer, last4, statementDay, dueDay, dayDifference } = req.body;
+
+      if (!nickname || !statementDay || !dueDay || dayDifference === undefined) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      await storage.updateCreditCard(id, {
+        nickname,
+        issuer,
+        last4,
+        statementDay,
+        dueDay,
+        dayDifference,
+      });
+
+      res.json({ message: "Credit card updated successfully" });
+    } catch (error) {
+      console.error("Error updating card:", error);
+      res.status(500).json({ message: "Failed to update card" });
+    }
+  });
+
+  // Credit Cards - Delete
+  app.delete('/api/cards/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteCreditCard(id);
+      res.json({ message: "Credit card deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting card:", error);
+      res.status(500).json({ message: "Failed to delete card" });
+    }
+  });
+
   // Loans - Get all
   app.get('/api/loans', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const loans = await storage.getLoans(userId);
       res.json({ loans });
     } catch (error) {
@@ -91,7 +129,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Loans - Create
   app.post('/api/loans', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const { name, installmentAmount, nextDueDate } = req.body;
 
       if (!name || !installmentAmount || !nextDueDate) {
@@ -112,10 +150,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Loans - Update
+  app.patch('/api/loans/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { name, installmentAmount, nextDueDate } = req.body;
+
+      if (!name || !installmentAmount || !nextDueDate) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      await storage.updateLoan(id, {
+        name,
+        installmentAmount,
+        nextDueDate,
+      });
+
+      res.json({ message: "Loan updated successfully" });
+    } catch (error) {
+      console.error("Error updating loan:", error);
+      res.status(500).json({ message: "Failed to update loan" });
+    }
+  });
+
+  // Loans - Delete
+  app.delete('/api/loans/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteLoan(id);
+      res.json({ message: "Loan deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting loan:", error);
+      res.status(500).json({ message: "Failed to delete loan" });
+    }
+  });
+
   // Budgets - Get budget for specific month with all data
   app.get('/api/budgets/:year/:month', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const year = parseInt(req.params.year);
       const month = parseInt(req.params.month);
 
@@ -165,7 +238,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Income - Create
   app.post('/api/budgets/:year/:month/incomes', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const year = parseInt(req.params.year);
       const month = parseInt(req.params.month);
       const { source, amount, recurring } = req.body;
@@ -214,10 +287,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Income - Update
+  app.patch('/api/incomes/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { source, amount, recurring } = req.body;
+
+      if (!source || !amount) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      await storage.updateIncome(id, { source, amount, recurring });
+      res.json({ message: "Income updated successfully" });
+    } catch (error) {
+      console.error("Error updating income:", error);
+      res.status(500).json({ message: "Failed to update income" });
+    }
+  });
+
+  // Income - Delete
+  app.delete('/api/incomes/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteIncome(id);
+      res.json({ message: "Income deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting income:", error);
+      res.status(500).json({ message: "Failed to delete income" });
+    }
+  });
+
   // Expense - Create
   app.post('/api/budgets/:year/:month/expenses', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const year = parseInt(req.params.year);
       const month = parseInt(req.params.month);
       const { label, amount, recurring } = req.body;
@@ -269,10 +372,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Expense - Update
+  app.patch('/api/expenses/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { label, amount, recurring } = req.body;
+
+      if (!label || !amount) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      await storage.updateExpense(id, { label, amount, recurring });
+      res.json({ message: "Expense updated successfully" });
+    } catch (error) {
+      console.error("Error updating expense:", error);
+      res.status(500).json({ message: "Failed to update expense" });
+    }
+  });
+
+  // Expense - Delete
+  app.delete('/api/expenses/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteExpense(id);
+      res.json({ message: "Expense deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting expense:", error);
+      res.status(500).json({ message: "Failed to delete expense" });
+    }
+  });
+
   // Cash-Out Planner - Apply withdrawals
   app.post('/api/budgets/:year/:month/cash-out', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const year = parseInt(req.params.year);
       const month = parseInt(req.params.month);
       const { withdrawals } = req.body;
@@ -322,7 +455,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create Next Month
   app.post('/api/budgets/:year/:month/create-next', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getUserId(req);
       const year = parseInt(req.params.year);
       const month = parseInt(req.params.month);
 

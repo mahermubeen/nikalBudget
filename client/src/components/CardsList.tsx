@@ -1,13 +1,14 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, CreditCard } from "lucide-react";
+import { Plus, CreditCard, Pencil, Trash2 } from "lucide-react";
 import { formatDate } from "@/lib/dateUtils";
+import type { CreditCard as CreditCardType } from "@shared/schema";
 
 interface CreditCardItem {
   id: string;
   nickname: string;
-  issuer?: string;
-  last4?: string;
+  issuer: string | null;
+  last4: string | null;
   statementDay: number;
   dueDay: number;
 }
@@ -15,9 +16,11 @@ interface CreditCardItem {
 interface CardsListProps {
   cards: CreditCardItem[];
   onAdd: () => void;
+  onEdit: (card: CreditCardItem) => void;
+  onDelete: (id: string) => void;
 }
 
-export function CardsList({ cards, onAdd }: CardsListProps) {
+export function CardsList({ cards, onAdd, onEdit, onDelete }: CardsListProps) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
@@ -63,6 +66,27 @@ export function CardsList({ cards, onAdd }: CardsListProps) {
                   <div className="text-xs text-muted-foreground mt-1">
                     Statement: Day {card.statementDay} • Due: Day {card.dueDay}
                   </div>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => onEdit(card)}
+                    data-testid={`button-edit-card-${card.id}`}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive hover:text-destructive"
+                    onClick={() => onDelete(card.id)}
+                    data-testid={`button-delete-card-${card.id}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
             ))}

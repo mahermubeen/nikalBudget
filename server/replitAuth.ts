@@ -10,9 +10,12 @@ import { storage } from "./storage";
 
 const getOidcConfig = memoize(
   async () => {
+    if (!process.env.REPL_ID) {
+      return null; // Development mode - no OIDC
+    }
     return await client.discovery(
       new URL(process.env.ISSUER_URL ?? "https://replit.com/oidc"),
-      process.env.REPL_ID!
+      process.env.REPL_ID
     );
   },
   { maxAge: 3600 * 1000 }
@@ -34,7 +37,7 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === "production", // Only require HTTPS in production
       maxAge: sessionTtl,
     },
   });
@@ -69,6 +72,47 @@ export async function setupAuth(app: Express) {
   app.use(passport.session());
 
   const config = await getOidcConfig();
+
+  // Development mode - no Replit Auth
+  if (!config) {
+    console.log("⚠️  Running in DEVELOPMENT mode without Replit Auth");
+    console.log("📝 Auto-login will use demo user: demo-user-123");
+
+    passport.serializeUser((user: Express.User, cb) => cb(null, user));
+    passport.deserializeUser((user: Express.User, cb) => cb(null, user));
+
+    // Simple dev login - auto-login as demo user
+    app.get("/api/login", async (req, res) => {
+      const devUser = {
+        claims: {
+          sub: "demo-user-123",
+          email: "demo@budgetnikal.com",
+          first_name: "Demo",
+          last_name: "User",
+        },
+        access_token: "dev-token",
+        expires_at: Math.floor(Date.now() / 1000) + 86400, // 24 hours from now
+      };
+
+      // Ensure user exists in database
+      await upsertUser(devUser.claims);
+
+      req.login(devUser, (err) => {
+        if (err) {
+          return res.status(500).json({ message: "Login failed" });
+        }
+        res.redirect("/");
+      });
+    });
+
+    app.get("/api/logout", (req, res) => {
+      req.logout(() => {
+        res.redirect("/");
+      });
+    });
+
+    return;
+  }
 
   const verify: VerifyFunction = async (
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
@@ -135,7 +179,17 @@ export async function setupAuth(app: Express) {
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
   const user = req.user as any;
 
-  if (!req.isAuthenticated() || !user.expires_at) {
+  if (!req.isAuthenticated() || !user) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  // Development mode - simpler auth check
+  if (!process.env.REPL_ID) {
+    return next();
+  }
+
+  // Production mode - full OIDC token validation
+  if (!user.expires_at) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 

@@ -1,8 +1,10 @@
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Footer } from "@/components/Footer";
 import { Wallet, CreditCard, TrendingUp, Calculator } from "lucide-react";
 
 export default function Landing() {
+  const [, navigate] = useLocation();
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-b">
@@ -69,10 +71,10 @@ export default function Landing() {
 
           {/* CTA */}
           <div className="text-center space-y-4">
-            <Button 
-              size="lg" 
+            <Button
+              size="lg"
               className="text-lg px-8 h-12"
-              onClick={() => window.location.href = '/api/login'}
+              onClick={() => navigate('/login')}
               data-testid="button-login"
             >
               Get Started

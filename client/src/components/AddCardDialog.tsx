@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,33 +27,65 @@ export function AddCardDialog({ open, onOpenChange, onAdd, isPending }: AddCardD
   const [statementDate, setStatementDate] = useState("");
   const [dueDate, setDueDate] = useState("");
 
+  // Reset form when dialog opens
+  useEffect(() => {
+    if (open) {
+      // Reset form state when dialog opens
+      setNickname("");
+      setIssuer("");
+      setLast4("");
+      setStatementDate("");
+      setDueDate("");
+    }
+  }, [open]);
+
+  // Reset form when dialog closes
+  const handleOpenChange = (newOpen: boolean) => {
+    onOpenChange(newOpen);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nickname.trim() || !statementDate || !dueDate) return;
-    
+    if (!nickname.trim() || !statementDate || !dueDate) {
+      console.log("Form validation failed:", { nickname: nickname.trim(), statementDate, dueDate });
+      return;
+    }
+
     const statementDay = getDayOfMonth(statementDate);
     const dueDay = getDayOfMonth(dueDate);
     const dayDifference = calculateDayDifference(statementDate, dueDate);
-    
-    onAdd({ 
-      nickname: nickname.trim(), 
+
+    console.log("Submitting card:", { nickname, statementDay, dueDay, dayDifference });
+
+    onAdd({
+      nickname: nickname.trim(),
       issuer: issuer.trim() || undefined,
       last4: last4.trim() || undefined,
       statementDay,
       dueDay,
       dayDifference,
     });
-    
-    // Reset form
-    setNickname("");
-    setIssuer("");
-    setLast4("");
-    setStatementDate("");
-    setDueDate("");
   };
 
+  // Check if form is valid
+  const isFormValid = nickname.trim().length > 0 && statementDate.length > 0 && dueDate.length > 0;
+
+  // Debug logging
+  useEffect(() => {
+    if (open) {
+      console.log("AddCardDialog state:", {
+        nickname: nickname.trim(),
+        statementDate,
+        dueDate,
+        isPending,
+        isFormValid,
+        buttonShouldBeEnabled: !isPending && isFormValid
+      });
+    }
+  }, [open, nickname, statementDate, dueDate, isPending, isFormValid]);
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
@@ -130,13 +162,20 @@ export function AddCardDialog({ open, onOpenChange, onAdd, isPending }: AddCardD
             <p className="text-xs text-muted-foreground">
               * Future months will be auto-predicted based on these dates
             </p>
+
+            {/* Validation feedback */}
+            {!isFormValid && (nickname.length > 0 || statementDate.length > 0 || dueDate.length > 0) && (
+              <p className="text-xs text-red-500">
+                Please fill in all required fields (marked with *)
+              </p>
+            )}
           </div>
 
           <DialogFooter>
             <Button
               type="button"
               variant="outline"
-              onClick={() => onOpenChange(false)}
+              onClick={() => handleOpenChange(false)}
               disabled={isPending}
               className="h-12"
               data-testid="button-cancel-card"
@@ -145,12 +184,12 @@ export function AddCardDialog({ open, onOpenChange, onAdd, isPending }: AddCardD
             </Button>
             <Button
               type="submit"
-              disabled={isPending || !nickname.trim() || !statementDate || !dueDate}
+              disabled={isPending || !isFormValid}
               className="h-12"
               data-testid="button-submit-card"
             >
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Add Card
+              {isPending ? "Adding..." : "Add Card"}
             </Button>
           </DialogFooter>
         </form>

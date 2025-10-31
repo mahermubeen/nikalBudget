@@ -1,12 +1,13 @@
+import "dotenv/config";
 import { db } from "./db";
-import { 
-  users, 
-  creditCards, 
-  cardStatements, 
-  loans, 
-  budgets, 
-  incomes, 
-  expenses 
+import {
+  users,
+  creditCards,
+  cardStatements,
+  loans,
+  budgets,
+  incomes,
+  expenses
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
 

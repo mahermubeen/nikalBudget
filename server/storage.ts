@@ -33,6 +33,8 @@ export interface IStorage {
   // Credit card operations
   getCreditCards(userId: string): Promise<CreditCard[]>;
   createCreditCard(userId: string, card: InsertCreditCard): Promise<CreditCard>;
+  updateCreditCard(id: string, card: Partial<InsertCreditCard>): Promise<void>;
+  deleteCreditCard(id: string): Promise<void>;
   
   // Card statement operations
   getCardStatements(cardId: string, year: number, month: number): Promise<CardStatement[]>;
@@ -42,6 +44,8 @@ export interface IStorage {
   // Loan operations
   getLoans(userId: string): Promise<Loan[]>;
   createLoan(userId: string, loan: InsertLoan): Promise<Loan>;
+  updateLoan(id: string, loan: Partial<InsertLoan>): Promise<void>;
+  deleteLoan(id: string): Promise<void>;
   
   // Budget operations
   getBudget(userId: string, year: number, month: number): Promise<Budget | undefined>;
@@ -51,11 +55,15 @@ export interface IStorage {
   getIncomes(budgetId: string): Promise<Income[]>;
   createIncome(income: InsertIncome): Promise<Income>;
   updateIncomeStatus(id: string, status: string, paidDate?: string): Promise<void>;
+  updateIncome(id: string, income: Partial<InsertIncome>): Promise<void>;
+  deleteIncome(id: string): Promise<void>;
   
   // Expense operations
   getExpenses(budgetId: string): Promise<Expense[]>;
   createExpense(expense: InsertExpense): Promise<Expense>;
   updateExpenseStatus(id: string, status: string, paidDate?: string): Promise<void>;
+  updateExpense(id: string, expense: Partial<InsertExpense>): Promise<void>;
+  deleteExpense(id: string): Promise<void>;
   
   // Get recurring items for next month creation
   getRecurringIncomes(userId: string, year: number, month: number): Promise<Income[]>;
@@ -102,6 +110,17 @@ export class DatabaseStorage implements IStorage {
       .values({ ...card, userId })
       .returning();
     return newCard;
+  }
+
+  async updateCreditCard(id: string, card: Partial<InsertCreditCard>): Promise<void> {
+    await db
+      .update(creditCards)
+      .set({ ...card, updatedAt: new Date() })
+      .where(eq(creditCards.id, id));
+  }
+
+  async deleteCreditCard(id: string): Promise<void> {
+    await db.delete(creditCards).where(eq(creditCards.id, id));
   }
 
   // Card statement operations
@@ -168,6 +187,17 @@ export class DatabaseStorage implements IStorage {
     return newLoan;
   }
 
+  async updateLoan(id: string, loan: Partial<InsertLoan>): Promise<void> {
+    await db
+      .update(loans)
+      .set({ ...loan, updatedAt: new Date() })
+      .where(eq(loans.id, id));
+  }
+
+  async deleteLoan(id: string): Promise<void> {
+    await db.delete(loans).where(eq(loans.id, id));
+  }
+
   // Budget operations
   async getBudget(userId: string, year: number, month: number): Promise<Budget | undefined> {
     const [budget] = await db
@@ -207,11 +237,22 @@ export class DatabaseStorage implements IStorage {
   async updateIncomeStatus(id: string, status: string, paidDate?: string): Promise<void> {
     await db
       .update(incomes)
-      .set({ 
-        status, 
-        paidDate: status === 'done' ? (paidDate || new Date().toISOString().split('T')[0]) : null 
+      .set({
+        status,
+        paidDate: status === 'done' ? (paidDate || new Date().toISOString().split('T')[0]) : null
       })
       .where(eq(incomes.id, id));
+  }
+
+  async updateIncome(id: string, income: Partial<InsertIncome>): Promise<void> {
+    await db
+      .update(incomes)
+      .set(income)
+      .where(eq(incomes.id, id));
+  }
+
+  async deleteIncome(id: string): Promise<void> {
+    await db.delete(incomes).where(eq(incomes.id, id));
   }
 
   // Expense operations
@@ -230,11 +271,22 @@ export class DatabaseStorage implements IStorage {
   async updateExpenseStatus(id: string, status: string, paidDate?: string): Promise<void> {
     await db
       .update(expenses)
-      .set({ 
-        status, 
-        paidDate: status === 'done' ? (paidDate || new Date().toISOString().split('T')[0]) : null 
+      .set({
+        status,
+        paidDate: status === 'done' ? (paidDate || new Date().toISOString().split('T')[0]) : null
       })
       .where(eq(expenses.id, id));
+  }
+
+  async updateExpense(id: string, expense: Partial<InsertExpense>): Promise<void> {
+    await db
+      .update(expenses)
+      .set(expense)
+      .where(eq(expenses.id, id));
+  }
+
+  async deleteExpense(id: string): Promise<void> {
+    await db.delete(expenses).where(eq(expenses.id, id));
   }
 
   // Get recurring items for next month creation

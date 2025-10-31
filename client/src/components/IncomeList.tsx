@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { formatDate } from "@/lib/dateUtils";
 import { StatusBadge } from "./StatusBadge";
@@ -21,9 +21,11 @@ interface IncomeListProps {
   currencyCode: string;
   onAdd: () => void;
   onToggleStatus: (id: string, currentStatus: string) => void;
+  onEdit: (income: Income) => void;
+  onDelete: (id: string) => void;
 }
 
-export function IncomeList({ incomes, currencyCode, onAdd, onToggleStatus }: IncomeListProps) {
+export function IncomeList({ incomes, currencyCode, onAdd, onToggleStatus, onEdit, onDelete }: IncomeListProps) {
   const total = incomes.reduce((sum, inc) => sum + parseFloat(inc.amount || '0'), 0);
 
   return (
@@ -81,9 +83,30 @@ export function IncomeList({ incomes, currencyCode, onAdd, onToggleStatus }: Inc
                     )}
                   </div>
                 </div>
-                
+
                 <div className="font-mono font-semibold text-success" data-testid={`text-income-amount-${income.id}`}>
                   {formatCurrency(income.amount, currencyCode)}
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => onEdit(income)}
+                    data-testid={`button-edit-income-${income.id}`}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive hover:text-destructive"
+                    onClick={() => onDelete(income.id)}
+                    data-testid={`button-delete-income-${income.id}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
             ))}

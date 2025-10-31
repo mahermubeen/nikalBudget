@@ -156,7 +156,6 @@ export const budgetsRelations = relations(budgets, ({ one, many }) => ({
 
 export const insertBudgetSchema = createInsertSchema(budgets).omit({
   id: true,
-  userId: true,
   createdAt: true,
 });
 

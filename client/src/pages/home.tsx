@@ -20,6 +20,29 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { formatCurrency } from "@/lib/currency";
 import { Loader2, TrendingDown, Wallet, CreditCard, Calculator, ArrowRight } from "lucide-react";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import type { Budget, Income, Expense, CreditCard as Card, Loan } from "@shared/schema";
+
+interface BudgetData {
+  budget: Budget;
+  incomes: Income[];
+  expenses: Expense[];
+  cardStatements: any[];
+  totals: {
+    incomeTotal: number;
+    cardsTotal: number;
+    nonCardExpensesTotal: number;
+    afterCardPayments: number;
+    need: number;
+  };
+}
+
+interface CardsData {
+  cards: Card[];
+}
+
+interface LoansData {
+  loans: Loan[];
+}
 
 export default function Home() {
   const { user, isLoading: authLoading } = useAuth();
@@ -36,6 +59,12 @@ export default function Home() {
   const [showAddCard, setShowAddCard] = useState(false);
   const [showAddLoan, setShowAddLoan] = useState(false);
   const [showCashOutPlanner, setShowCashOutPlanner] = useState(false);
+
+  // Edit states - track which item is being edited
+  const [editingIncome, setEditingIncome] = useState<Income | null>(null);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [editingCard, setEditingCard] = useState<Card | null>(null);
+  const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -54,19 +83,19 @@ export default function Home() {
   const currencyCode = user?.currencyCode || 'PKR';
 
   // Fetch budget data for current month
-  const { data: budgetData, isLoading: budgetLoading } = useQuery({
+  const { data: budgetData, isLoading: budgetLoading } = useQuery<BudgetData>({
     queryKey: ['/api/budgets', year, month],
     enabled: !!user,
   });
 
   // Fetch credit cards
-  const { data: cardsData } = useQuery({
+  const { data: cardsData } = useQuery<CardsData>({
     queryKey: ['/api/cards'],
     enabled: !!user,
   });
 
   // Fetch loans
-  const { data: loansData } = useQuery({
+  const { data: loansData } = useQuery<LoansData>({
     queryKey: ['/api/loans'],
     enabled: !!user,
   });
@@ -74,16 +103,22 @@ export default function Home() {
   const budget = budgetData?.budget;
   const incomes = budgetData?.incomes || [];
   const expenses = budgetData?.expenses || [];
-  const totals = budgetData?.totals || {};
+  const totals = budgetData?.totals || {
+    incomeTotal: 0,
+    cardsTotal: 0,
+    nonCardExpensesTotal: 0,
+    afterCardPayments: 0,
+    need: 0,
+  };
   const cards = cardsData?.cards || [];
   const loans = loansData?.loans || [];
 
   // Calculate KPIs
-  const incomeTotal = totals.incomeTotal || 0;
-  const cardsTotal = totals.cardsTotal || 0;
-  const nonCardExpensesTotal = totals.nonCardExpensesTotal || 0;
-  const afterCardPayments = totals.afterCardPayments || 0;
-  const need = totals.need || 0;
+  const incomeTotal = totals.incomeTotal;
+  const cardsTotal = totals.cardsTotal;
+  const nonCardExpensesTotal = totals.nonCardExpensesTotal;
+  const afterCardPayments = totals.afterCardPayments;
+  const need = totals.need;
 
   // Month navigation
   const handlePreviousMonth = () => {
@@ -234,6 +269,31 @@ export default function Home() {
     },
   });
 
+  // Delete income mutation
+  const deleteIncome = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest('DELETE', `/api/incomes/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/budgets', year, month] });
+      toast({ title: "Income deleted successfully" });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({ title: "Error", description: "Failed to delete income", variant: "destructive" });
+    },
+  });
+
   // Toggle expense status mutation
   const toggleExpenseStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
@@ -256,6 +316,81 @@ export default function Home() {
         return;
       }
       toast({ title: "Error", description: "Failed to update status", variant: "destructive" });
+    },
+  });
+
+  // Delete expense mutation
+  const deleteExpense = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest('DELETE', `/api/expenses/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/budgets', year, month] });
+      toast({ title: "Expense deleted successfully" });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({ title: "Error", description: "Failed to delete expense", variant: "destructive" });
+    },
+  });
+
+  // Delete credit card mutation
+  const deleteCreditCard = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest('DELETE', `/api/cards/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/cards'] });
+      toast({ title: "Credit card deleted successfully" });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({ title: "Error", description: "Failed to delete card", variant: "destructive" });
+    },
+  });
+
+  // Delete loan mutation
+  const deleteLoan = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest('DELETE', `/api/loans/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/loans'] });
+      toast({ title: "Loan deleted successfully" });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({ title: "Error", description: "Failed to delete loan", variant: "destructive" });
     },
   });
 
@@ -415,6 +550,15 @@ export default function Home() {
                 currencyCode={currencyCode}
                 onAdd={() => setShowAddIncome(true)}
                 onToggleStatus={(id, status) => toggleIncomeStatus.mutate({ id, status })}
+                onEdit={(income) => {
+                  setEditingIncome(income);
+                  setShowAddIncome(true);
+                }}
+                onDelete={(id) => {
+                  if (confirm('Are you sure you want to delete this income?')) {
+                    deleteIncome.mutate(id);
+                  }
+                }}
               />
               
               <ExpenseList
@@ -422,6 +566,15 @@ export default function Home() {
                 currencyCode={currencyCode}
                 onAdd={() => setShowAddExpense(true)}
                 onToggleStatus={(id, status) => toggleExpenseStatus.mutate({ id, status })}
+                onEdit={(expense) => {
+                  setEditingExpense(expense);
+                  setShowAddExpense(true);
+                }}
+                onDelete={(id) => {
+                  if (confirm('Are you sure you want to delete this expense?')) {
+                    deleteExpense.mutate(id);
+                  }
+                }}
               />
             </div>
 
