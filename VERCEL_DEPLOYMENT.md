@@ -2,6 +2,15 @@
 
 This guide will help you deploy your Budget Nikal app to Vercel with proper environment variables.
 
+## Important Files Changed
+
+The following files have been updated to fix Vercel deployment issues:
+- `api/handler.ts` - New self-contained API handler for Vercel serverless functions
+- `server/app.ts` - Updated to properly await async route registration
+- `vercel.json` - Updated to use the new handler
+- `tsconfig.json` - Updated to include the api directory
+- `.env` - Supabase credentials enabled for production
+
 ## Prerequisites
 
 1. A Vercel account (sign up at https://vercel.com)
