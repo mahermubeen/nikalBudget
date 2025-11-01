@@ -5,7 +5,12 @@ import { registerRoutes } from "./routes";
 
 declare module "http" { interface IncomingMessage { rawBody: unknown } }
 
-export default function createApp() {
+let appInstance: express.Express | null = null;
+
+export default async function createApp() {
+  // Return cached instance if already initialized
+  if (appInstance) return appInstance;
+
   const app = express();
 
   app.use(express.json({
@@ -26,7 +31,8 @@ export default function createApp() {
   });
 
   // ⬇️ mount all your routes under /api inside registerRoutes
-  registerRoutes(app);
+  // IMPORTANT: registerRoutes is async because it sets up auth
+  await registerRoutes(app);
 
   // health
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
@@ -37,5 +43,6 @@ export default function createApp() {
     res.status(status).json({ message: err.message || "Internal Server Error" });
   });
 
+  appInstance = app;
   return app;
 }

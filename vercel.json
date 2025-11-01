@@ -1,6 +1,14 @@
 {
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist/public",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/app" },
-    { "source": "/(.*)", "destination": "/" }
-  ]
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "functions": {
+    "api/app.ts": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
+  }
 }
