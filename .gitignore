@@ -4,8 +4,13 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+api/bundled.js
 
 # Environment variables (contains sensitive data)
 .env
 .env.local
 .env.*.local
+
+CLAUDE.md
+.replit.md
+.replit

@@ -1,13 +1,11 @@
 {
-  "buildCommand": "vite build",
+  "buildCommand": "npm run build",
   "outputDirectory": "dist/public",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/handler" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/api/(.*)", "destination": "/api" }
   ],
   "functions": {
-    "api/handler.ts": {
-      "memory": 1024,
+    "api/index.js": {
       "maxDuration": 10
     }
   }
