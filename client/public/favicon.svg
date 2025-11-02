@@ -1,0 +1,22 @@
+<svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <rect width="100" height="100" rx="20" fill="#2563eb"/>
+
+  <!-- Wallet base -->
+  <rect x="20" y="38" width="60" height="42" rx="5" fill="white" opacity="0.95"/>
+
+  <!-- Wallet flap -->
+  <path d="M20 43C20 40.2386 22.2386 38 25 38H75C77.7614 38 80 40.2386 80 43V47H20V43Z" fill="white"/>
+
+  <!-- Card slot detail -->
+  <rect x="28" y="52" width="24" height="3" rx="1.5" fill="#2563eb" opacity="0.3"/>
+
+  <!-- Upward arrow (Nikal - extract) -->
+  <g transform="translate(52, 18)">
+    <circle cx="11" cy="11" r="14" fill="#10b981"/>
+    <path d="M11 16 L11 6 M11 6 L8 9 M11 6 L14 9" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Rupee symbol -->
+  <text x="32" y="73" font-family="system-ui, sans-serif" font-size="18" font-weight="bold" fill="#2563eb">₨</text>
+</svg>

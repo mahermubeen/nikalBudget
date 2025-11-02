@@ -53,9 +53,13 @@ export const creditCards = pgTable("credit_cards", {
   nickname: varchar("nickname", { length: 100 }).notNull(),
   issuer: varchar("issuer", { length: 100 }),
   last4: varchar("last4", { length: 4 }),
-  statementDay: integer("statement_day").notNull(), // Day of month for statement (1-31)
-  dueDay: integer("due_day").notNull(), // Day of month for due date (1-31)
+  statementDay: integer("statement_day").notNull(), // Day of month for statement (1-31) - kept for backward compatibility
+  dueDay: integer("due_day").notNull(), // Day of month for due date (1-31) - kept for backward compatibility
   dayDifference: integer("day_difference").notNull(), // Days between statement and due
+  firstStatementDate: date("first_statement_date"), // Actual first known statement date (nullable for backward compatibility)
+  billingCycleDays: integer("billing_cycle_days").default(30), // Number of days in billing cycle (typically 28-30)
+  totalLimit: decimal("total_limit", { precision: 12, scale: 2 }), // Total credit limit
+  availableLimit: decimal("available_limit", { precision: 12, scale: 2 }), // Available limit for withdrawal
   createdAt: timestamp("created_at").defaultNow(),
 });
 

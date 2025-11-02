@@ -38,16 +38,36 @@ export function getCurrencyInfo(code: string): CurrencyInfo {
 export function formatCurrency(amount: number | string, currencyCode: string): string {
   const currency = getCurrencyInfo(currencyCode);
   const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
-  
+
   if (isNaN(numAmount)) return `${currency.symbol}0`;
-  
-  // Use Intl.NumberFormat for proper thousands separators
-  const formatter = new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: currency.decimals,
-    maximumFractionDigits: currency.decimals,
-  });
-  
-  return `${currency.symbol}${formatter.format(numAmount)}`;
+
+  // Helper to remove trailing zeros
+  const removeTrailingZeros = (str: string): string => {
+    return str.replace(/\.00$/, '').replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+  };
+
+  const absAmount = Math.abs(numAmount);
+  const sign = numAmount < 0 ? '-' : '';
+
+  // Format with K, M, B suffixes
+  if (absAmount >= 1_000_000_000) {
+    const value = (absAmount / 1_000_000_000).toFixed(2);
+    return `${sign}${currency.symbol}${removeTrailingZeros(value)}B`;
+  } else if (absAmount >= 1_000_000) {
+    const value = (absAmount / 1_000_000).toFixed(2);
+    return `${sign}${currency.symbol}${removeTrailingZeros(value)}M`;
+  } else if (absAmount >= 1_000) {
+    const value = (absAmount / 1_000).toFixed(2);
+    return `${sign}${currency.symbol}${removeTrailingZeros(value)}K`;
+  } else {
+    // For amounts < 1000, use standard formatting with commas
+    const formatter = new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: currency.decimals,
+    });
+    const formatted = formatter.format(absAmount);
+    return `${sign}${currency.symbol}${removeTrailingZeros(formatted)}`;
+  }
 }
 
 export function parseAmount(value: string): string {

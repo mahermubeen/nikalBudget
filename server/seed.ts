@@ -51,9 +51,12 @@ async function seed() {
         nickname: 'JS Bank',
         issuer: 'JS Bank Limited',
         last4: '1234',
-        statementDay: 15,
-        dueDay: 25,
-        dayDifference: 10,
+        statementDay: 26,
+        dueDay: 16,
+        dayDifference: 20,
+        firstStatementDate: '2025-08-26',
+        billingCycleDays: 30,
+        totalLimit: '250000',
       })
       .onConflictDoNothing()
       .returning();
@@ -65,9 +68,12 @@ async function seed() {
         nickname: 'Alfalah Bank',
         issuer: 'Bank Alfalah',
         last4: '5678',
-        statementDay: 10,
-        dueDay: 28,
-        dayDifference: 18,
+        statementDay: 19,
+        dueDay: 5,
+        dayDifference: 17,
+        firstStatementDate: '2025-08-19',
+        billingCycleDays: 30,
+        totalLimit: '150000',
       })
       .onConflictDoNothing()
       .returning();

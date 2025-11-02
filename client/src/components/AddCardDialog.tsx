@@ -17,6 +17,9 @@ interface AddCardDialogProps {
     statementDay: number;
     dueDay: number;
     dayDifference: number;
+    firstStatementDate: string;
+    billingCycleDays: number;
+    totalLimit?: string;
   }) => void;
   onUpdate?: (id: string, data: {
     nickname: string;
@@ -25,6 +28,9 @@ interface AddCardDialogProps {
     statementDay: number;
     dueDay: number;
     dayDifference: number;
+    firstStatementDate: string;
+    billingCycleDays: number;
+    totalLimit?: string;
   }) => void;
   initialData?: CreditCard | null;
   isPending?: boolean;
@@ -36,6 +42,8 @@ export function AddCardDialog({ open, onOpenChange, onAdd, onUpdate, initialData
   const [last4, setLast4] = useState("");
   const [statementDate, setStatementDate] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [billingCycleDays, setBillingCycleDays] = useState("30");
+  const [totalLimit, setTotalLimit] = useState("");
 
   // Pre-fill form when editing, reset when adding new
   useEffect(() => {
@@ -43,11 +51,19 @@ export function AddCardDialog({ open, onOpenChange, onAdd, onUpdate, initialData
       setNickname(initialData.nickname);
       setIssuer(initialData.issuer || "");
       setLast4(initialData.last4 || "");
-      // For edit mode, we'll use the day values directly to create sample dates
-      // The actual statementDay and dueDay will be preserved from initialData
+      setTotalLimit(initialData.totalLimit || "");
+      setBillingCycleDays(String(initialData.billingCycleDays || 30));
+      // Use firstStatementDate if available, otherwise fallback to statementDay
+      if (initialData.firstStatementDate) {
+        setStatementDate(initialData.firstStatementDate);
+      } else {
+        const year = new Date().getFullYear();
+        const month = new Date().getMonth() + 1;
+        setStatementDate(`${year}-${String(month).padStart(2, '0')}-${String(initialData.statementDay).padStart(2, '0')}`);
+      }
+      // Calculate due date
       const year = new Date().getFullYear();
       const month = new Date().getMonth() + 1;
-      setStatementDate(`${year}-${String(month).padStart(2, '0')}-${String(initialData.statementDay).padStart(2, '0')}`);
       setDueDate(`${year}-${String(month).padStart(2, '0')}-${String(initialData.dueDay).padStart(2, '0')}`);
     } else if (open && !initialData) {
       // Reset form when adding new
@@ -56,6 +72,8 @@ export function AddCardDialog({ open, onOpenChange, onAdd, onUpdate, initialData
       setLast4("");
       setStatementDate("");
       setDueDate("");
+      setBillingCycleDays("30");
+      setTotalLimit("");
     }
   }, [open, initialData]);
 
@@ -84,6 +102,9 @@ export function AddCardDialog({ open, onOpenChange, onAdd, onUpdate, initialData
       statementDay,
       dueDay,
       dayDifference,
+      firstStatementDate: statementDate,
+      billingCycleDays: parseInt(billingCycleDays) || 30,
+      totalLimit: totalLimit.trim() || undefined,
     };
 
     if (initialData && onUpdate) {
@@ -185,6 +206,43 @@ export function AddCardDialog({ open, onOpenChange, onAdd, onUpdate, initialData
                 data-testid="input-card-due-date"
                 required
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="billingCycleDays">Billing Cycle (Days) *</Label>
+              <Input
+                id="billingCycleDays"
+                type="number"
+                value={billingCycleDays}
+                onChange={(e) => setBillingCycleDays(e.target.value)}
+                placeholder="30"
+                className="h-12"
+                data-testid="input-card-billing-cycle"
+                min="28"
+                max="31"
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Days between consecutive statements (typically 28-30)
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="totalLimit">Total Credit Limit (Optional)</Label>
+              <Input
+                id="totalLimit"
+                type="number"
+                value={totalLimit}
+                onChange={(e) => setTotalLimit(e.target.value)}
+                placeholder="250000"
+                className="h-12 font-mono"
+                data-testid="input-card-total-limit"
+                min="0"
+                step="0.01"
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter your card's total credit limit. Available limit = Total Limit - Total Due
+              </p>
             </div>
 
             <p className="text-xs text-muted-foreground">

@@ -31,6 +31,7 @@ interface BudgetData {
     incomeTotal: number;
     cardsTotal: number;
     nonCardExpensesTotal: number;
+    totalExpenses: number;
     afterCardPayments: number;
     need: number;
   };
@@ -90,7 +91,16 @@ export default function Home() {
 
   // Fetch credit cards
   const { data: cardsData } = useQuery<CardsData>({
-    queryKey: ['/api/cards'],
+    queryKey: ['/api/cards', year, month],
+    queryFn: async () => {
+      const res = await fetch(`/api/cards?year=${year}&month=${month}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        throw new Error(`${res.status}: ${res.statusText}`);
+      }
+      return await res.json();
+    },
     enabled: !!user,
   });
 
@@ -107,6 +117,7 @@ export default function Home() {
     incomeTotal: 0,
     cardsTotal: 0,
     nonCardExpensesTotal: 0,
+    totalExpenses: 0,
     afterCardPayments: 0,
     need: 0,
   };
@@ -117,6 +128,7 @@ export default function Home() {
   const incomeTotal = totals.incomeTotal;
   const cardsTotal = totals.cardsTotal;
   const nonCardExpensesTotal = totals.nonCardExpensesTotal;
+  const totalExpenses = totals.totalExpenses;
   const afterCardPayments = totals.afterCardPayments;
   const need = totals.need;
 
@@ -167,11 +179,12 @@ export default function Home() {
 
   // Add expense mutation
   const addExpense = useMutation({
-    mutationFn: async (data: { label: string; amount: string; recurring: boolean }) => {
+    mutationFn: async (data: { label: string; amount: string; recurring: boolean; statementId?: string }) => {
       await apiRequest('POST', `/api/budgets/${year}/${month}/expenses`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/budgets', year, month] });
+      queryClient.invalidateQueries({ queryKey: ['/api/cards', year, month] }); // Refresh cards to update available limit
       setShowAddExpense(false);
       toast({ title: "Expense added successfully" });
     },
@@ -197,7 +210,7 @@ export default function Home() {
       await apiRequest('POST', '/api/cards', data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/cards'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/cards', year, month] });
       setShowAddCard(false);
       toast({ title: "Credit card added successfully" });
     },
@@ -329,6 +342,7 @@ export default function Home() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/budgets', year, month] });
+      queryClient.invalidateQueries({ queryKey: ['/api/cards', year, month] }); // Refresh cards to update available limit
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
@@ -380,6 +394,7 @@ export default function Home() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/budgets', year, month] });
+      queryClient.invalidateQueries({ queryKey: ['/api/cards', year, month] }); // Refresh cards to update available limit
       toast({ title: "Expense deleted successfully" });
     },
     onError: (error: Error) => {
@@ -404,7 +419,7 @@ export default function Home() {
       await apiRequest('PATCH', `/api/cards/${id}`, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/cards'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/cards', year, month] });
       setShowAddCard(false);
       setEditingCard(null);
       toast({ title: "Credit card updated successfully" });
@@ -431,7 +446,7 @@ export default function Home() {
       await apiRequest('DELETE', `/api/cards/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/cards'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/cards', year, month] });
       toast({ title: "Credit card deleted successfully" });
     },
     onError: (error: Error) => {
@@ -570,12 +585,19 @@ export default function Home() {
   if (!user) return null;
 
   // Prepare card options for cash-out planner
-  const cardOptions = budgetData?.cardStatements?.map((stmt: any) => ({
-    id: stmt.cardId,
-    nickname: stmt.cardNickname,
-    availableLimit: parseFloat(stmt.availableLimit),
-    dueDate: stmt.dueDate,
-  })) || [];
+  // Use cards directly with their available limits (not from statements)
+  const cardOptions = cards
+    .filter((card: Card) => card.availableLimit && parseFloat(card.availableLimit) > 0)
+    .map((card: Card) => {
+      // Construct a due date for the current month based on card's dueDay
+      const dueDate = new Date(year, month - 1, card.dueDay);
+      return {
+        id: card.id,
+        nickname: card.nickname,
+        availableLimit: parseFloat(card.availableLimit || '0'),
+        dueDate: dueDate.toISOString().split('T')[0], // Format as YYYY-MM-DD
+      };
+    });
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -596,7 +618,7 @@ export default function Home() {
         ) : (
           <div className="space-y-6">
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
               <KPICard
                 label="Income"
                 amount={formatCurrency(incomeTotal, currencyCode)}
@@ -618,6 +640,14 @@ export default function Home() {
                 subtext="Regular expenses"
                 icon={TrendingDown}
                 data-testid="kpi-non-card"
+              />
+              <KPICard
+                label="Total Expenses"
+                amount={formatCurrency(totalExpenses, currencyCode)}
+                subtext="Cards + Non-Cards"
+                icon={TrendingDown}
+                variant="danger"
+                data-testid="kpi-total-expenses"
               />
               <KPICard
                 label="After Cards"
@@ -691,6 +721,9 @@ export default function Home() {
             <div className="grid lg:grid-cols-2 gap-6">
               <CardsList
                 cards={cards}
+                currencyCode={currencyCode}
+                currentYear={year}
+                currentMonth={month}
                 onAdd={() => setShowAddCard(true)}
                 onEdit={(card) => {
                   setEditingCard(card as Card);
@@ -765,6 +798,9 @@ export default function Home() {
         onUpdate={(id, data) => updateExpense.mutate({ id, data })}
         initialData={editingExpense}
         isPending={addExpense.isPending || updateExpense.isPending}
+        cards={cards}
+        currentYear={year}
+        currentMonth={month}
       />
 
       <AddCardDialog

@@ -1,6 +1,7 @@
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Footer } from "@/components/Footer";
+import { Logo } from "@/components/Logo";
 import { Wallet, CreditCard, TrendingUp, Calculator } from "lucide-react";
 
 export default function Landing() {
@@ -8,7 +9,8 @@ export default function Landing() {
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-b">
-        <div className="container mx-auto px-4 h-16 flex items-center">
+        <div className="container mx-auto px-4 h-16 flex items-center gap-3">
+          <Logo size={36} />
           <h1 className="text-xl font-bold text-primary">Budget Nikal</h1>
         </div>
       </header>

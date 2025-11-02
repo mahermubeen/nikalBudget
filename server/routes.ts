@@ -43,7 +43,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = getUserId(req);
       const cards = await storage.getCreditCards(userId);
-      res.json({ cards });
+
+      // Get year and month from query params, default to current month
+      const now = new Date();
+      const year = req.query.year ? parseInt(req.query.year) : now.getFullYear();
+      const month = req.query.month ? parseInt(req.query.month) : now.getMonth() + 1;
+
+      const cardsWithAvailableLimit = await Promise.all(cards.map(async (card) => {
+        // Get ALL statements for this card
+        const allStatements = await storage.getAllCardStatements(card.id);
+
+        // Filter statements whose due date falls EXACTLY in the current viewing month
+        const targetMonthStart = new Date(year, month - 1, 1);
+        const targetMonthEnd = new Date(year, month, 0, 23, 59, 59, 999); // End of last day of month
+
+        const relevantStatements = allStatements.filter(stmt => {
+          const dueDate = new Date(stmt.dueDate + 'T00:00:00');
+          const isInMonth = dueDate >= targetMonthStart && dueDate <= targetMonthEnd;
+          return isInMonth && stmt.status === 'pending'; // Only count unpaid statements
+        });
+
+        // Calculate total due from relevant statements in this month only
+        let totalDueAmount = 0;
+        for (const stmt of relevantStatements) {
+          totalDueAmount += parseFloat(stmt.totalDue);
+        }
+
+        // Calculate available limit: totalLimit - totalDue (for this month only)
+        let availableLimit = card.totalLimit;
+        if (card.totalLimit) {
+          const totalLimitNum = parseFloat(card.totalLimit);
+          availableLimit = (totalLimitNum - totalDueAmount).toFixed(2);
+        }
+
+        return {
+          ...card,
+          availableLimit,
+        };
+      }));
+
+      res.json({ cards: cardsWithAvailableLimit });
     } catch (error) {
       console.error("Error fetching cards:", error);
       res.status(500).json({ message: "Failed to fetch cards" });
@@ -54,7 +93,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/cards', isAuthenticated, async (req: any, res) => {
     try {
       const userId = getUserId(req);
-      const { nickname, issuer, last4, statementDay, dueDay, dayDifference } = req.body;
+      const { nickname, issuer, last4, statementDay, dueDay, dayDifference, firstStatementDate, billingCycleDays, totalLimit } = req.body;
 
       if (!nickname || !statementDay || !dueDay || dayDifference === undefined) {
         return res.status(400).json({ message: "Missing required fields" });
@@ -67,6 +106,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         statementDay,
         dueDay,
         dayDifference,
+        firstStatementDate: firstStatementDate || undefined,
+        billingCycleDays: billingCycleDays || 30,
+        totalLimit,
       });
 
       res.json({ card });
@@ -80,7 +122,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch('/api/cards/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const { nickname, issuer, last4, statementDay, dueDay, dayDifference } = req.body;
+      const { nickname, issuer, last4, statementDay, dueDay, dayDifference, firstStatementDate, billingCycleDays, totalLimit } = req.body;
 
       if (!nickname || !statementDay || !dueDay || dayDifference === undefined) {
         return res.status(400).json({ message: "Missing required fields" });
@@ -93,6 +135,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         statementDay,
         dueDay,
         dayDifference,
+        firstStatementDate,
+        billingCycleDays,
+        totalLimit,
       });
 
       res.json({ message: "Credit card updated successfully" });
@@ -111,6 +156,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting card:", error);
       res.status(500).json({ message: "Failed to delete card" });
+    }
+  });
+
+  // Get all statements for a specific card
+  app.get('/api/cards/:cardId/statements', isAuthenticated, async (req: any, res) => {
+    try {
+      const { cardId } = req.params;
+      const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+      const month = req.query.month ? parseInt(req.query.month as string) : new Date().getMonth() + 1;
+
+      console.log(`Fetching statements for card ${cardId}, year ${year}, month ${month}`);
+
+      // Verify card belongs to user
+      const card = await storage.getCardById(cardId);
+      if (!card) {
+        console.error(`Card not found: ${cardId}`);
+        return res.status(404).json({ message: "Card not found" });
+      }
+
+      console.log(`Card found:`, card.nickname);
+
+      // Get all existing statements for this card
+      let statements = await storage.getAllCardStatements(cardId);
+      console.log(`Existing statements count: ${statements.length}`);
+
+      // Check if statement exists for the current viewing month
+      const currentMonthStatement = statements.find(s => s.year === year && s.month === month);
+
+      if (!currentMonthStatement) {
+        console.log(`Creating new statement for ${year}-${month}`);
+
+        // Auto-create statement for current month
+        const statementDay = Math.min(card.statementDay, getDaysInMonth(year, month));
+        const statementDate = new Date(year, month - 1, statementDay);
+        const dueDate = new Date(statementDate);
+        dueDate.setDate(dueDate.getDate() + card.dayDifference);
+
+        console.log(`Statement date: ${formatDate(statementDate)}, Due date: ${formatDate(dueDate)}`);
+
+        const newStatement = await storage.createCardStatement({
+          cardId: cardId,
+          year,
+          month,
+          statementDate: formatDate(statementDate),
+          dueDate: formatDate(dueDate),
+          totalDue: '0',
+          minimumDue: '0',
+          availableLimit: '0',
+          status: 'pending',
+          paidDate: null,
+        });
+
+        console.log(`Created statement:`, newStatement.id);
+        statements.push(newStatement);
+      } else {
+        console.log(`Found existing statement for ${year}-${month}:`, currentMonthStatement.id);
+      }
+
+      // Sort statements by year and month (newest first)
+      statements.sort((a, b) => {
+        if (a.year !== b.year) return b.year - a.year;
+        return b.month - a.month;
+      });
+
+      console.log(`Returning ${statements.length} statements`);
+      res.json({ statements });
+    } catch (error) {
+      console.error("Error fetching card statements:", error);
+      res.status(500).json({ message: "Failed to fetch card statements", error: String(error) });
     }
   });
 
@@ -205,7 +319,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get all related data
       const incomes = await storage.getIncomes(budget.id);
       const expenses = await storage.getExpenses(budget.id);
-      const cardStatements = await storage.getCardStatementsForMonth(userId, year, month);
+      const cardStatements = await storage.getCardStatementsDueInMonth(userId, year, month);
 
       // Calculate totals
       const incomeTotal = incomes.reduce((sum, inc) => sum + parseFloat(inc.amount), 0);
@@ -213,6 +327,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const nonCardExpensesTotal = expenses
         .filter(exp => exp.kind !== 'CARD_BILL')
         .reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+      const totalExpenses = cardsTotal + nonCardExpensesTotal;
       const afterCardPayments = incomeTotal - cardsTotal;
       const need = Math.max(0, nonCardExpensesTotal - afterCardPayments);
 
@@ -225,6 +340,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           incomeTotal,
           cardsTotal,
           nonCardExpensesTotal,
+          totalExpenses,
           afterCardPayments,
           need,
         },
@@ -323,7 +439,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = getUserId(req);
       const year = parseInt(req.params.year);
       const month = parseInt(req.params.month);
-      const { label, amount, recurring } = req.body;
+      const { label, amount, recurring, statementId } = req.body;
 
       if (!label || !amount) {
         return res.status(400).json({ message: "Missing required fields" });
@@ -335,6 +451,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         budget = await storage.createBudget({ userId, year, month });
       }
 
+      let expenseKind = 'REGULAR';
+      let linkedCardStatementId = null;
+
+      // If statementId is provided, this is a card bill expense
+      if (statementId) {
+        // Verify the statement exists
+        const statement = await storage.getCardStatementById(statementId);
+        if (!statement) {
+          return res.status(400).json({ message: "Invalid statement ID" });
+        }
+
+        // Update the totalDue by adding the new expense amount
+        const currentTotalDue = parseFloat(statement.totalDue);
+        const newTotalDue = (currentTotalDue + parseFloat(amount)).toFixed(2);
+        await storage.updateCardStatement(statement.id, {
+          totalDue: newTotalDue,
+        });
+
+        expenseKind = 'CARD_BILL';
+        linkedCardStatementId = statement.id;
+      }
+
       const expense = await storage.createExpense({
         budgetId: budget.id,
         label,
@@ -342,8 +480,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         recurring: recurring || false,
         status: 'pending',
         paidDate: null,
-        kind: 'REGULAR',
-        linkedCardStatementId: null,
+        kind: expenseKind,
+        linkedCardStatementId,
         linkedLoanId: null,
       });
 
@@ -362,6 +500,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!status || (status !== 'pending' && status !== 'done')) {
         return res.status(400).json({ message: "Invalid status" });
+      }
+
+      // Get the expense to check if it's linked to a card statement
+      const expense = await storage.getExpenseById(id);
+      if (!expense) {
+        return res.status(404).json({ message: "Expense not found" });
+      }
+
+      // If it's a card bill expense, update the card statement's totalDue
+      if (expense.kind === 'CARD_BILL' && expense.linkedCardStatementId) {
+        const statement = await storage.getCardStatementById(expense.linkedCardStatementId);
+        if (statement) {
+          const currentTotalDue = parseFloat(statement.totalDue);
+          const expenseAmount = parseFloat(expense.amount);
+          let newTotalDue;
+
+          if (status === 'done' && expense.status === 'pending') {
+            // Marking as done (paid) - subtract from totalDue
+            newTotalDue = Math.max(0, currentTotalDue - expenseAmount).toFixed(2);
+          } else if (status === 'pending' && expense.status === 'done') {
+            // Marking back to pending (unpaid) - add back to totalDue
+            newTotalDue = (currentTotalDue + expenseAmount).toFixed(2);
+          } else {
+            // No change in status, keep same totalDue
+            newTotalDue = currentTotalDue.toFixed(2);
+          }
+
+          await storage.updateCardStatement(statement.id, {
+            totalDue: newTotalDue,
+          });
+        }
       }
 
       await storage.updateExpenseStatus(id, status);
@@ -394,6 +563,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/expenses/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
+
+      // Get the expense first to check if it's linked to a card statement
+      const expense = await storage.getExpenseById(id);
+      if (!expense) {
+        return res.status(404).json({ message: "Expense not found" });
+      }
+
+      // If it's a card bill expense, update the card statement
+      if (expense.kind === 'CARD_BILL' && expense.linkedCardStatementId) {
+        const statement = await storage.getCardStatementById(expense.linkedCardStatementId);
+        if (statement) {
+          // Subtract the expense amount from totalDue
+          const currentTotalDue = parseFloat(statement.totalDue);
+          const expenseAmount = parseFloat(expense.amount);
+          const newTotalDue = Math.max(0, currentTotalDue - expenseAmount).toFixed(2);
+          await storage.updateCardStatement(statement.id, {
+            totalDue: newTotalDue,
+          });
+        }
+      }
+
       await storage.deleteExpense(id);
       res.json({ message: "Expense deleted successfully" });
     } catch (error) {

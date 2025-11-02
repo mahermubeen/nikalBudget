@@ -39,7 +39,12 @@ export interface IStorage {
   // Card statement operations
   getCardStatements(cardId: string, year: number, month: number): Promise<CardStatement[]>;
   getCardStatementsForMonth(userId: string, year: number, month: number): Promise<any[]>;
+  getCardStatementsDueInMonth(userId: string, year: number, month: number): Promise<any[]>;
+  getAllCardStatements(cardId: string): Promise<CardStatement[]>;
+  getCardStatementById(id: string): Promise<CardStatement | undefined>;
   createCardStatement(statement: InsertCardStatement): Promise<CardStatement>;
+  updateCardStatement(id: string, statement: Partial<InsertCardStatement>): Promise<void>;
+  getCardById(cardId: string): Promise<CreditCard | undefined>;
   
   // Loan operations
   getLoans(userId: string): Promise<Loan[]>;
@@ -60,6 +65,7 @@ export interface IStorage {
   
   // Expense operations
   getExpenses(budgetId: string): Promise<Expense[]>;
+  getExpenseById(id: string): Promise<Expense | undefined>;
   createExpense(expense: InsertExpense): Promise<Expense>;
   updateExpenseStatus(id: string, status: string, paidDate?: string): Promise<void>;
   updateExpense(id: string, expense: Partial<InsertExpense>): Promise<void>;
@@ -166,12 +172,64 @@ export class DatabaseStorage implements IStorage {
     return results;
   }
 
+  async getCardStatementsDueInMonth(userId: string, year: number, month: number): Promise<any[]> {
+    // Get all card statements for this user
+    const allStatements = await db
+      .select({
+        id: cardStatements.id,
+        cardId: cardStatements.cardId,
+        cardNickname: creditCards.nickname,
+        year: cardStatements.year,
+        month: cardStatements.month,
+        statementDate: cardStatements.statementDate,
+        dueDate: cardStatements.dueDate,
+        totalDue: cardStatements.totalDue,
+        minimumDue: cardStatements.minimumDue,
+        availableLimit: cardStatements.availableLimit,
+        status: cardStatements.status,
+        paidDate: cardStatements.paidDate,
+      })
+      .from(cardStatements)
+      .innerJoin(creditCards, eq(cardStatements.cardId, creditCards.id))
+      .where(eq(creditCards.userId, userId));
+
+    // Filter by due date falling in the target month
+    const targetMonthStart = new Date(year, month - 1, 1);
+    const targetMonthEnd = new Date(year, month, 0, 23, 59, 59, 999);
+
+    return allStatements.filter(stmt => {
+      const dueDate = new Date(stmt.dueDate + 'T00:00:00');
+      return dueDate >= targetMonthStart && dueDate <= targetMonthEnd;
+    });
+  }
+
+  async getAllCardStatements(cardId: string): Promise<CardStatement[]> {
+    return db.select().from(cardStatements).where(eq(cardStatements.cardId, cardId));
+  }
+
+  async getCardStatementById(id: string): Promise<CardStatement | undefined> {
+    const [statement] = await db.select().from(cardStatements).where(eq(cardStatements.id, id));
+    return statement;
+  }
+
   async createCardStatement(statement: InsertCardStatement): Promise<CardStatement> {
     const [newStatement] = await db
       .insert(cardStatements)
       .values(statement)
       .returning();
     return newStatement;
+  }
+
+  async updateCardStatement(id: string, statement: Partial<InsertCardStatement>): Promise<void> {
+    await db
+      .update(cardStatements)
+      .set(statement)
+      .where(eq(cardStatements.id, id));
+  }
+
+  async getCardById(cardId: string): Promise<CreditCard | undefined> {
+    const [card] = await db.select().from(creditCards).where(eq(creditCards.id, cardId));
+    return card;
   }
 
   // Loan operations
@@ -258,6 +316,11 @@ export class DatabaseStorage implements IStorage {
   // Expense operations
   async getExpenses(budgetId: string): Promise<Expense[]> {
     return db.select().from(expenses).where(eq(expenses.budgetId, budgetId));
+  }
+
+  async getExpenseById(id: string): Promise<Expense | undefined> {
+    const [expense] = await db.select().from(expenses).where(eq(expenses.id, id));
+    return expense;
   }
 
   async createExpense(expense: InsertExpense): Promise<Expense> {

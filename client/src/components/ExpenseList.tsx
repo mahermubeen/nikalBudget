@@ -108,8 +108,8 @@ export function ExpenseList({ expenses, currencyCode, onAdd, onToggleStatus, onE
                   {formatCurrency(expense.amount, currencyCode)}
                 </div>
 
-                {expense.kind === 'REGULAR' && (
-                  <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1">
+                  {expense.kind === 'REGULAR' && (
                     <Button
                       variant="ghost"
                       size="icon"
@@ -119,6 +119,8 @@ export function ExpenseList({ expenses, currencyCode, onAdd, onToggleStatus, onE
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
+                  )}
+                  {(expense.kind === 'REGULAR' || expense.kind === 'CARD_BILL') && (
                     <Button
                       variant="ghost"
                       size="icon"
@@ -128,8 +130,8 @@ export function ExpenseList({ expenses, currencyCode, onAdd, onToggleStatus, onE
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ))}
           </div>

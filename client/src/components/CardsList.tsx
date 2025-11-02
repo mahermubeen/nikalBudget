@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, CreditCard, Pencil, Trash2 } from "lucide-react";
 import { formatDate } from "@/lib/dateUtils";
+import { formatCurrency } from "@/lib/currency";
 import type { CreditCard as CreditCardType } from "@shared/schema";
 
 interface CreditCardItem {
@@ -11,6 +12,11 @@ interface CreditCardItem {
   last4: string | null;
   statementDay: number;
   dueDay: number;
+  dayDifference: number;
+  firstStatementDate?: string | null;
+  billingCycleDays?: number | null;
+  totalLimit?: string | null;
+  availableLimit?: string | null;
 }
 
 interface CardsListProps {
@@ -18,9 +24,63 @@ interface CardsListProps {
   onAdd: () => void;
   onEdit: (card: CreditCardItem) => void;
   onDelete: (id: string) => void;
+  currencyCode?: string;
+  currentYear?: number;
+  currentMonth?: number;
 }
 
-export function CardsList({ cards, onAdd, onEdit, onDelete }: CardsListProps) {
+export function CardsList({ cards, onAdd, onEdit, onDelete, currencyCode = 'PKR', currentYear, currentMonth }: CardsListProps) {
+  // Calculate statement and due dates for a card based on billing cycle
+  const calculateDates = (card: CreditCardItem) => {
+    if (!currentYear || !currentMonth) return null;
+    if (!card.firstStatementDate || !card.billingCycleDays) {
+      // Fallback to old method if new fields not available
+      return null;
+    }
+
+    // Parse the first statement date
+    const firstStmtDate = new Date(card.firstStatementDate + 'T00:00:00');
+
+    // Define the target month's start and end
+    const targetMonthStart = new Date(currentYear, currentMonth - 1, 1);
+    const targetMonthEnd = new Date(currentYear, currentMonth, 0); // Last day of target month
+
+    let statementDate = new Date(firstStmtDate);
+    let dueDate = new Date(firstStmtDate);
+    dueDate.setDate(dueDate.getDate() + card.dayDifference);
+
+    // Keep adding cycles until we find a statement whose DUE DATE falls in the target month
+    let maxIterations = 1000; // Safety limit
+    let iteration = 0;
+
+    while (iteration < maxIterations) {
+      // Check if the due date falls within the target month
+      if (dueDate >= targetMonthStart && dueDate <= targetMonthEnd) {
+        // Found the statement with due date in target month
+        break;
+      }
+
+      // If we've gone past the target month, we went too far
+      if (dueDate > targetMonthEnd) {
+        // Go back one cycle
+        statementDate.setDate(statementDate.getDate() - card.billingCycleDays);
+        dueDate.setDate(dueDate.getDate() - card.billingCycleDays);
+        break;
+      }
+
+      // Move to next billing cycle
+      statementDate.setDate(statementDate.getDate() + card.billingCycleDays);
+      dueDate.setDate(dueDate.getDate() + card.billingCycleDays);
+      iteration++;
+    }
+
+    // Format dates with month names
+    const formatOptions: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+    const statementFormatted = statementDate.toLocaleDateString('en-US', formatOptions);
+    const dueFormatted = dueDate.toLocaleDateString('en-US', formatOptions);
+
+    return `Statement: ${statementFormatted} - Due: ${dueFormatted}`;
+  };
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
@@ -64,8 +124,20 @@ export function CardsList({ cards, onAdd, onEdit, onDelete }: CardsListProps) {
                     {card.last4 && <span className="font-mono">••{card.last4}</span>}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
-                    Statement: Day {card.statementDay} • Due: Day {card.dueDay}
+                    {currentYear && currentMonth && calculateDates(card) ? (
+                      <span>{calculateDates(card)}</span>
+                    ) : (
+                      <span>Statement: Day {card.statementDay} • Due: Day {card.dueDay}</span>
+                    )}
                   </div>
+                  {card.totalLimit && (
+                    <div className="text-xs text-muted-foreground mt-1">
+                      <span>Limit: {formatCurrency(parseFloat(card.totalLimit), currencyCode)}</span>
+                      {card.availableLimit && (
+                        <span> | Available: {formatCurrency(parseFloat(card.availableLimit), currencyCode)}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-1">
