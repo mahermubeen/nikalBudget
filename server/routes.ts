@@ -72,11 +72,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
           totalDueAmount += parseFloat(stmt.totalDue);
         }
 
-        // Calculate available limit: totalLimit - totalDue (for this month only)
+        // Get cash-out withdrawals for this card in the current month
+        // Cash-outs are stored as income items with label "Cash-out – {CardNickname}"
+        let cashOutAmount = 0;
+        const budget = await storage.getBudget(userId, year, month);
+        if (budget) {
+          const incomes = await storage.getIncomes(budget.id);
+          const cashOutIncome = incomes.find(inc => inc.source === `Cash-out – ${card.nickname}`);
+          if (cashOutIncome) {
+            cashOutAmount = parseFloat(cashOutIncome.amount);
+          }
+        }
+
+        // Calculate available limit: totalLimit - totalDue - cashOut
         let availableLimit = card.totalLimit;
         if (card.totalLimit) {
           const totalLimitNum = parseFloat(card.totalLimit);
-          availableLimit = (totalLimitNum - totalDueAmount).toFixed(2);
+          availableLimit = (totalLimitNum - totalDueAmount - cashOutAmount).toFixed(2);
         }
 
         return {
@@ -387,10 +399,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // After card payments: always use total cards (not just unpaid) so it doesn't change when marking as done
       const afterCardPayments = incomeTotal - cardsTotal;
+
+      // balanceUsed stores total cash-out amount
       const balanceUsed = parseFloat(budget.balanceUsed || '0');
 
-      // Balance: Income minus paid card bills (so balance decreases when cards are marked as done)
-      const balance = incomeTotal - paidCardExpenses - balanceUsed;
+      // Balance: Income minus paid card bills
+      // Cash-outs are already included in incomeTotal (as income items)
+      const balance = incomeTotal - paidCardExpenses;
 
       const need = Math.max(0, nonCardExpensesTotal - afterCardPayments);
 
@@ -717,6 +732,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Budget not found" });
       }
 
+      // Delete all cash-out incomes
+      const existingIncomes = await storage.getIncomes(budget.id);
+      for (const income of existingIncomes) {
+        if (income.source.startsWith('Cash-out –')) {
+          await storage.deleteIncome(income.id);
+        }
+      }
+
       // Reset balance used to 0
       await storage.updateBudgetBalanceUsed(budget.id, '0');
 
@@ -745,31 +768,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         budget = await storage.createBudget({ userId, year, month });
       }
 
-      // Store balance used (replace, not increment)
-      // This allows applying the plan multiple times to adjust the balance
-      const balanceToStore = balance && balance > 0 ? balance.toString() : '0';
-      await storage.updateBudgetBalanceUsed(budget.id, balanceToStore);
-
-      const today = new Date().toISOString().split('T')[0];
-
-      // First, mark all CARD_BILL expenses in this budget as done
-      // (this will update the card statements' totalDue)
-      const allExpenses = await storage.getExpenses(budget.id);
-      for (const expense of allExpenses) {
-        if (expense.kind === 'CARD_BILL' && expense.status === 'pending') {
-          await storage.updateExpenseStatus(expense.id, 'done', today);
+      // Delete any existing cash-out incomes first (to allow re-applying)
+      const existingIncomes = await storage.getIncomes(budget.id);
+      for (const income of existingIncomes) {
+        if (income.source.startsWith('Cash-out –')) {
+          await storage.deleteIncome(income.id);
         }
       }
 
-      // Then, mark all card statements due this month as paid
-      const cardStatements = await storage.getCardStatementsDueInMonth(userId, year, month);
-      for (const statement of cardStatements) {
-        // Mark card statement as paid
-        await storage.updateCardStatement(statement.id, {
-          status: 'done',
-          paidDate: today,
+      // Calculate total cash-out amount
+      let totalCashOut = 0;
+
+      // Create cash-out incomes for each withdrawal
+      // These are tracked as incomes to increase the balance
+      for (const withdrawal of withdrawals) {
+        const card = await storage.getCardById(withdrawal.cardId);
+        if (!card) continue;
+
+        totalCashOut += withdrawal.amount;
+
+        await storage.createIncome({
+          budgetId: budget.id,
+          source: `Cash-out – ${card.nickname}`,
+          amount: withdrawal.amount.toString(),
+          recurring: false,
+          status: 'done', // Mark as done immediately (money withdrawn)
+          paidDate: new Date().toISOString().split('T')[0],
         });
       }
+
+      // Store total cash-out amount in balanceUsed
+      await storage.updateBudgetBalanceUsed(budget.id, totalCashOut.toString());
 
       res.json({ message: "Cash-out plan applied successfully" });
     } catch (error) {

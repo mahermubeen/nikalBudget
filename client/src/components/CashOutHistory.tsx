@@ -4,14 +4,18 @@ import { Card } from "@/components/ui/card";
 import { Loader2, AlertCircle, Trash2, History } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import type { CreditCard, Income } from "@shared/schema";
 
 interface CashOutHistoryProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  balanceUsed: number;
+  balanceUsed: number; // Total cash-out amount
   currencyCode: string;
   onReset: () => void;
   isPending?: boolean;
+  cards: CreditCard[];
+  beforeBalance: number;
+  incomes: Income[]; // To get cash-out details
 }
 
 export function CashOutHistory({
@@ -20,9 +24,16 @@ export function CashOutHistory({
   balanceUsed,
   currencyCode,
   onReset,
-  isPending
+  isPending,
+  cards,
+  beforeBalance,
+  incomes
 }: CashOutHistoryProps) {
   const hasActivePlan = balanceUsed > 0;
+  const totalCashOut = balanceUsed;
+
+  // Get cash-out income items
+  const cashOutIncomes = incomes.filter(inc => inc.source.startsWith('Cash-out –'));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -37,27 +48,62 @@ export function CashOutHistory({
         <div className="space-y-4 py-4">
           {hasActivePlan ? (
             <>
-              <Card className="p-4 bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
-                <div className="space-y-2">
-                  <div className="text-sm text-muted-foreground">Current Cash-Out Plan</div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-xs text-muted-foreground">Balance Used</div>
-                      <div className="text-2xl font-mono font-bold text-blue-600 dark:text-blue-400">
-                        {formatCurrency(balanceUsed, currencyCode)}
-                      </div>
+              {/* Summary */}
+              <Card className="p-4 bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800">
+                <div className="space-y-3">
+                  <div className="text-sm font-medium text-muted-foreground">Balance Update</div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Before Cash-Out:</span>
+                      <span className="font-mono font-semibold">{formatCurrency(beforeBalance, currencyCode)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Cash-Out Amount:</span>
+                      <span className="font-mono font-semibold text-green-600">+{formatCurrency(totalCashOut, currencyCode)}</span>
+                    </div>
+                    <div className="border-t pt-2 flex items-center justify-between">
+                      <span className="font-medium">Current Balance:</span>
+                      <span className="text-2xl font-mono font-bold text-green-600 dark:text-green-400">
+                        {formatCurrency(beforeBalance + totalCashOut, currencyCode)}
+                      </span>
                     </div>
                   </div>
                 </div>
               </Card>
 
-              <Alert>
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription className="text-sm">
-                  This represents the amount from your account balance that you've allocated in the cash-out plan.
-                  Resetting will clear this allocation and restore your full balance.
-                </AlertDescription>
-              </Alert>
+              {/* Withdrawal Details */}
+              {cashOutIncomes.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Withdrawal Details</div>
+                  {cashOutIncomes.map((income) => {
+                    // Extract card nickname from "Cash-out – CardNickname"
+                    const cardNickname = income.source.replace('Cash-out – ', '');
+                    const card = cards.find(c => c.nickname === cardNickname);
+
+                    const withdrawalAmount = parseFloat(income.amount);
+                    const originalLimit = card ? parseFloat(card.totalLimit || '0') : 0;
+                    const currentAvailable = card ? parseFloat(card.availableLimit || '0') : 0;
+
+                    return (
+                      <Card key={income.id} className="p-3 bg-blue-50 dark:bg-blue-950/20">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="font-semibold">{cardNickname}</div>
+                            <div className="font-mono font-bold text-blue-600">
+                              {formatCurrency(withdrawalAmount, currencyCode)}
+                            </div>
+                          </div>
+                          {card && (
+                            <div className="text-xs text-muted-foreground">
+                              Available Limit: {formatCurrency(currentAvailable, currencyCode)} / {formatCurrency(originalLimit, currencyCode)}
+                            </div>
+                          )}
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
 
               <Button
                 onClick={onReset}
@@ -74,7 +120,7 @@ export function CashOutHistory({
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                No active cash-out plan. Your full balance is available.
+                No active cash-out plan.
               </AlertDescription>
             </Alert>
           )}

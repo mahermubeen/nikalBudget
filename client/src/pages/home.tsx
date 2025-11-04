@@ -920,6 +920,9 @@ export default function Home() {
         currencyCode={currencyCode}
         onReset={() => resetCashOutPlan.mutate()}
         isPending={resetCashOutPlan.isPending}
+        cards={cards}
+        beforeBalance={afterCardPayments}
+        incomes={incomes}
       />
     </div>
   );
