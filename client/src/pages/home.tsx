@@ -654,7 +654,10 @@ export default function Home() {
         ) : (
           <div className="space-y-6">
             {/* KPI Cards */}
-            <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 ${cardsTotal > 0 ? 'xl:grid-cols-6' : 'xl:grid-cols-5'}`}>
+            <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 ${
+              // Show 6 columns when there are unpaid card expenses, otherwise 5
+              expenses.some(exp => exp.kind === 'CARD_BILL' && exp.status === 'pending') ? 'xl:grid-cols-6' : 'xl:grid-cols-5'
+            }`}>
               <KPICard
                 label="Income"
                 amount={formatCurrency(incomeTotal, currencyCode)}
@@ -685,7 +688,8 @@ export default function Home() {
                 variant="danger"
                 data-testid="kpi-total-expenses"
               />
-              {cardsTotal > 0 && (
+              {/* Show "After Cards" only when there are unpaid card expenses */}
+              {expenses.some(exp => exp.kind === 'CARD_BILL' && exp.status === 'pending') && (
                 <KPICard
                   label="After Cards"
                   amount={formatCurrency(afterCardPayments, currencyCode)}

@@ -372,6 +372,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const cardBillExpenses = expenses.filter(exp => exp.kind === 'CARD_BILL');
       const cardsTotal = cardBillExpenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
 
+      // Calculate paid card expenses (marked as done)
+      const paidCardExpenses = expenses
+        .filter(exp => exp.kind === 'CARD_BILL' && exp.status === 'done')
+        .reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+
       // Non-card expenses: REGULAR + LOAN expenses (regardless of payment status)
       const nonCardExpensesTotal = expenses
         .filter(exp => exp.kind !== 'CARD_BILL')
@@ -383,7 +388,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // After card payments: always use total cards (not just unpaid) so it doesn't change when marking as done
       const afterCardPayments = incomeTotal - cardsTotal;
       const balanceUsed = parseFloat(budget.balanceUsed || '0');
-      const balance = incomeTotal - balanceUsed; // User's account balance
+
+      // Balance: Income minus paid card bills (so balance decreases when cards are marked as done)
+      const balance = incomeTotal - paidCardExpenses - balanceUsed;
+
       const need = Math.max(0, nonCardExpensesTotal - afterCardPayments);
 
       res.json({
