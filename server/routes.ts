@@ -407,9 +407,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get all related data
+      console.log('Fetching data for budget:', budget.id, 'user:', userId);
       const incomes = await storage.getIncomes(budget.id);
+      console.log('Fetched incomes:', incomes.length);
       const expenses = await storage.getExpenses(budget.id);
+      console.log('Fetched expenses:', expenses.length);
       const cardStatements = await storage.getCardStatementsDueInMonth(userId, year, month);
+      console.log('Fetched card statements:', cardStatements.length);
 
       // Helper function to safely parse decimal values
       const safeParseFloat = (value: any): number => {
