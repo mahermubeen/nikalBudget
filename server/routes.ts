@@ -174,6 +174,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Cards - Reorder
+  app.post('/api/cards/reorder', isAuthenticated, async (req: any, res) => {
+    try {
+      const { items } = req.body;
+
+      if (!items || !Array.isArray(items)) {
+        return res.status(400).json({ message: "Invalid items array" });
+      }
+
+      await storage.updateCardsOrder(items);
+      res.json({ message: "Cards reordered successfully" });
+    } catch (error) {
+      console.error("Error reordering cards:", error);
+      res.status(500).json({ message: "Failed to reorder cards" });
+    }
+  });
+
   // Get all statements for a specific card
   app.get('/api/cards/:cardId/statements', isAuthenticated, async (req: any, res) => {
     try {
@@ -355,6 +372,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Loans - Reorder
+  app.post('/api/loans/reorder', isAuthenticated, async (req: any, res) => {
+    try {
+      const { items } = req.body;
+
+      if (!items || !Array.isArray(items)) {
+        return res.status(400).json({ message: "Invalid items array" });
+      }
+
+      await storage.updateLoansOrder(items);
+      res.json({ message: "Loans reordered successfully" });
+    } catch (error) {
+      console.error("Error reordering loans:", error);
+      res.status(500).json({ message: "Failed to reorder loans" });
+    }
+  });
+
   // Budgets - Get budget for specific month with all data
   app.get('/api/budgets/:year/:month', isAuthenticated, async (req: any, res) => {
     try {
@@ -377,31 +411,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const expenses = await storage.getExpenses(budget.id);
       const cardStatements = await storage.getCardStatementsDueInMonth(userId, year, month);
 
+      // Helper function to safely parse decimal values
+      const safeParseFloat = (value: any): number => {
+        if (value === null || value === undefined || value === '') return 0;
+        const parsed = parseFloat(String(value));
+        return isNaN(parsed) ? 0 : parsed;
+      };
+
       // Calculate totals
-      const incomeTotal = incomes.reduce((sum, inc) => sum + parseFloat(inc.amount), 0);
+      const incomeTotal = incomes.reduce((sum, inc) => sum + safeParseFloat(inc.amount), 0);
 
       // Cards total: sum of all CARD_BILL expenses (regardless of payment status)
       const cardBillExpenses = expenses.filter(exp => exp.kind === 'CARD_BILL');
-      const cardsTotal = cardBillExpenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+      const cardsTotal = cardBillExpenses.reduce((sum, exp) => sum + safeParseFloat(exp.amount), 0);
 
       // Calculate paid card expenses (marked as done)
       const paidCardExpenses = expenses
         .filter(exp => exp.kind === 'CARD_BILL' && exp.status === 'done')
-        .reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+        .reduce((sum, exp) => sum + safeParseFloat(exp.amount), 0);
 
       // Non-card expenses: REGULAR + LOAN expenses (regardless of payment status)
       const nonCardExpensesTotal = expenses
         .filter(exp => exp.kind !== 'CARD_BILL')
-        .reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+        .reduce((sum, exp) => sum + safeParseFloat(exp.amount), 0);
 
       // Total expenses: all expenses combined (regardless of payment status)
-      const totalExpenses = expenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+      const totalExpenses = expenses.reduce((sum, exp) => sum + safeParseFloat(exp.amount), 0);
+
+      // Debug logging for production
+      console.log('Budget calculation debug:', {
+        budgetId: budget.id,
+        year,
+        month,
+        expensesCount: expenses.length,
+        expensesRaw: expenses.map(exp => ({ id: exp.id, label: exp.label, amount: exp.amount, kind: exp.kind })),
+        totalExpenses,
+        incomeTotal,
+        nonCardExpensesTotal,
+      });
 
       // After card payments: always use total cards (not just unpaid) so it doesn't change when marking as done
       const afterCardPayments = incomeTotal - cardsTotal;
 
       // balanceUsed stores total cash-out amount
-      const balanceUsed = parseFloat(budget.balanceUsed || '0');
+      const balanceUsed = safeParseFloat(budget.balanceUsed || '0');
 
       // Balance: Income minus paid card bills
       // Cash-outs are already included in incomeTotal (as income items)
@@ -510,6 +563,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting income:", error);
       res.status(500).json({ message: "Failed to delete income" });
+    }
+  });
+
+  // Income - Reorder
+  app.post('/api/incomes/reorder', isAuthenticated, async (req: any, res) => {
+    try {
+      const { items } = req.body;
+
+      if (!items || !Array.isArray(items)) {
+        return res.status(400).json({ message: "Invalid items array" });
+      }
+
+      await storage.updateIncomesOrder(items);
+      res.json({ message: "Incomes reordered successfully" });
+    } catch (error) {
+      console.error("Error reordering incomes:", error);
+      res.status(500).json({ message: "Failed to reorder incomes" });
     }
   });
 
@@ -716,6 +786,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting expense:", error);
       res.status(500).json({ message: "Failed to delete expense" });
+    }
+  });
+
+  // Expense - Reorder
+  app.post('/api/expenses/reorder', isAuthenticated, async (req: any, res) => {
+    try {
+      const { items } = req.body;
+
+      if (!items || !Array.isArray(items)) {
+        return res.status(400).json({ message: "Invalid items array" });
+      }
+
+      await storage.updateExpensesOrder(items);
+      res.json({ message: "Expenses reordered successfully" });
+    } catch (error) {
+      console.error("Error reordering expenses:", error);
+      res.status(500).json({ message: "Failed to reorder expenses" });
     }
   });
 

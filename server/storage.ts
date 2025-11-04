@@ -22,7 +22,7 @@ import {
   type InsertExpense,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc, max, sql } from "drizzle-orm";
 
 export interface IStorage {
   // User operations (required for Replit Auth)
@@ -35,6 +35,7 @@ export interface IStorage {
   createCreditCard(userId: string, card: InsertCreditCard): Promise<CreditCard>;
   updateCreditCard(id: string, card: Partial<InsertCreditCard>): Promise<void>;
   deleteCreditCard(id: string): Promise<void>;
+  updateCardsOrder(items: { id: string; displayOrder: number }[]): Promise<void>;
   
   // Card statement operations
   getCardStatements(cardId: string, year: number, month: number): Promise<CardStatement[]>;
@@ -51,6 +52,7 @@ export interface IStorage {
   createLoan(userId: string, loan: InsertLoan): Promise<Loan>;
   updateLoan(id: string, loan: Partial<InsertLoan>): Promise<void>;
   deleteLoan(id: string): Promise<void>;
+  updateLoansOrder(items: { id: string; displayOrder: number }[]): Promise<void>;
   
   // Budget operations
   getBudget(userId: string, year: number, month: number): Promise<Budget | undefined>;
@@ -63,6 +65,7 @@ export interface IStorage {
   updateIncomeStatus(id: string, status: string, paidDate?: string): Promise<void>;
   updateIncome(id: string, income: Partial<InsertIncome>): Promise<void>;
   deleteIncome(id: string): Promise<void>;
+  updateIncomesOrder(items: { id: string; displayOrder: number }[]): Promise<void>;
   
   // Expense operations
   getExpenses(budgetId: string): Promise<Expense[]>;
@@ -71,6 +74,7 @@ export interface IStorage {
   updateExpenseStatus(id: string, status: string, paidDate?: string): Promise<void>;
   updateExpense(id: string, expense: Partial<InsertExpense>): Promise<void>;
   deleteExpense(id: string): Promise<void>;
+  updateExpensesOrder(items: { id: string; displayOrder: number }[]): Promise<void>;
   
   // Get recurring items for next month creation
   getRecurringIncomes(userId: string, year: number, month: number): Promise<Income[]>;
@@ -108,13 +112,20 @@ export class DatabaseStorage implements IStorage {
 
   // Credit card operations
   async getCreditCards(userId: string): Promise<CreditCard[]> {
-    return db.select().from(creditCards).where(eq(creditCards.userId, userId));
+    return db.select().from(creditCards).where(eq(creditCards.userId, userId)).orderBy(asc(creditCards.displayOrder), asc(creditCards.createdAt));
   }
 
   async createCreditCard(userId: string, card: InsertCreditCard): Promise<CreditCard> {
+    // Get max displayOrder for this user's cards
+    const result = await db
+      .select({ maxOrder: max(creditCards.displayOrder) })
+      .from(creditCards)
+      .where(eq(creditCards.userId, userId));
+    const maxOrder = result[0]?.maxOrder ?? -1;
+
     const [newCard] = await db
       .insert(creditCards)
-      .values({ ...card, userId })
+      .values({ ...card, userId, displayOrder: maxOrder + 1 })
       .returning();
     return newCard;
   }
@@ -235,13 +246,20 @@ export class DatabaseStorage implements IStorage {
 
   // Loan operations
   async getLoans(userId: string): Promise<Loan[]> {
-    return db.select().from(loans).where(eq(loans.userId, userId));
+    return db.select().from(loans).where(eq(loans.userId, userId)).orderBy(asc(loans.displayOrder), asc(loans.createdAt));
   }
 
   async createLoan(userId: string, loan: InsertLoan): Promise<Loan> {
+    // Get max displayOrder for this user's loans
+    const result = await db
+      .select({ maxOrder: max(loans.displayOrder) })
+      .from(loans)
+      .where(eq(loans.userId, userId));
+    const maxOrder = result[0]?.maxOrder ?? -1;
+
     const [newLoan] = await db
       .insert(loans)
-      .values({ ...loan, userId })
+      .values({ ...loan, userId, displayOrder: maxOrder + 1 })
       .returning();
     return newLoan;
   }
@@ -289,13 +307,20 @@ export class DatabaseStorage implements IStorage {
 
   // Income operations
   async getIncomes(budgetId: string): Promise<Income[]> {
-    return db.select().from(incomes).where(eq(incomes.budgetId, budgetId));
+    return db.select().from(incomes).where(eq(incomes.budgetId, budgetId)).orderBy(asc(incomes.displayOrder), asc(incomes.createdAt));
   }
 
   async createIncome(income: InsertIncome): Promise<Income> {
+    // Get max displayOrder for this budget's incomes
+    const result = await db
+      .select({ maxOrder: max(incomes.displayOrder) })
+      .from(incomes)
+      .where(eq(incomes.budgetId, income.budgetId));
+    const maxOrder = result[0]?.maxOrder ?? -1;
+
     const [newIncome] = await db
       .insert(incomes)
-      .values(income)
+      .values({ ...income, displayOrder: maxOrder + 1 })
       .returning();
     return newIncome;
   }
@@ -323,7 +348,7 @@ export class DatabaseStorage implements IStorage {
 
   // Expense operations
   async getExpenses(budgetId: string): Promise<Expense[]> {
-    return db.select().from(expenses).where(eq(expenses.budgetId, budgetId));
+    return db.select().from(expenses).where(eq(expenses.budgetId, budgetId)).orderBy(asc(expenses.displayOrder), asc(expenses.createdAt));
   }
 
   async getExpenseById(id: string): Promise<Expense | undefined> {
@@ -332,9 +357,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createExpense(expense: InsertExpense): Promise<Expense> {
+    // Get max displayOrder for this budget's expenses
+    const result = await db
+      .select({ maxOrder: max(expenses.displayOrder) })
+      .from(expenses)
+      .where(eq(expenses.budgetId, expense.budgetId));
+    const maxOrder = result[0]?.maxOrder ?? -1;
+
     const [newExpense] = await db
       .insert(expenses)
-      .values(expense)
+      .values({ ...expense, displayOrder: maxOrder + 1 })
       .returning();
     return newExpense;
   }
@@ -394,6 +426,43 @@ export class DatabaseStorage implements IStorage {
           eq(expenses.kind, 'REGULAR')
         )
       );
+  }
+
+  // Batch order update methods
+  async updateCardsOrder(items: { id: string; displayOrder: number }[]): Promise<void> {
+    for (const item of items) {
+      await db
+        .update(creditCards)
+        .set({ displayOrder: item.displayOrder })
+        .where(eq(creditCards.id, item.id));
+    }
+  }
+
+  async updateLoansOrder(items: { id: string; displayOrder: number }[]): Promise<void> {
+    for (const item of items) {
+      await db
+        .update(loans)
+        .set({ displayOrder: item.displayOrder })
+        .where(eq(loans.id, item.id));
+    }
+  }
+
+  async updateIncomesOrder(items: { id: string; displayOrder: number }[]): Promise<void> {
+    for (const item of items) {
+      await db
+        .update(incomes)
+        .set({ displayOrder: item.displayOrder })
+        .where(eq(incomes.id, item.id));
+    }
+  }
+
+  async updateExpensesOrder(items: { id: string; displayOrder: number }[]): Promise<void> {
+    for (const item of items) {
+      await db
+        .update(expenses)
+        .set({ displayOrder: item.displayOrder })
+        .where(eq(expenses.id, item.id));
+    }
   }
 }
 

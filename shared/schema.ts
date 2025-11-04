@@ -60,6 +60,7 @@ export const creditCards = pgTable("credit_cards", {
   billingCycleDays: integer("billing_cycle_days").default(30), // Number of days in billing cycle (typically 28-30)
   totalLimit: decimal("total_limit", { precision: 12, scale: 2 }), // Total credit limit
   availableLimit: decimal("available_limit", { precision: 12, scale: 2 }), // Available limit for withdrawal
+  displayOrder: integer("display_order").notNull().default(0), // User-defined display order
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -120,6 +121,7 @@ export const loans = pgTable("loans", {
   installmentAmount: decimal("installment_amount", { precision: 12, scale: 2 }).notNull(),
   nextDueDate: date("next_due_date").notNull(),
   recurring: boolean("recurring").notNull().default(true),
+  displayOrder: integer("display_order").notNull().default(0), // User-defined display order
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -176,6 +178,7 @@ export const incomes = pgTable("incomes", {
   recurring: boolean("recurring").notNull().default(false),
   status: varchar("status", { length: 20 }).notNull().default('pending'), // 'pending' | 'done'
   paidDate: date("paid_date"),
+  displayOrder: integer("display_order").notNull().default(0), // User-defined display order
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -206,6 +209,7 @@ export const expenses = pgTable("expenses", {
   kind: varchar("kind", { length: 20 }).notNull().default('REGULAR'), // 'REGULAR' | 'CARD_BILL' | 'LOAN'
   linkedCardStatementId: varchar("linked_card_statement_id").references(() => cardStatements.id, { onDelete: 'set null' }),
   linkedLoanId: varchar("linked_loan_id").references(() => loans.id, { onDelete: 'set null' }),
+  displayOrder: integer("display_order").notNull().default(0), // User-defined display order
   createdAt: timestamp("created_at").defaultNow(),
 });
 

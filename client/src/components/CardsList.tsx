@@ -1,9 +1,26 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, CreditCard, Pencil, Trash2 } from "lucide-react";
+import { Plus, CreditCard, Pencil, Trash2, GripVertical } from "lucide-react";
 import { formatDate } from "@/lib/dateUtils";
 import { formatCurrency } from "@/lib/currency";
 import type { CreditCard as CreditCardType } from "@shared/schema";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface CreditCardItem {
   id: string;
@@ -13,10 +30,13 @@ interface CreditCardItem {
   statementDay: number;
   dueDay: number;
   dayDifference: number;
-  firstStatementDate?: string | null;
-  billingCycleDays?: number | null;
-  totalLimit?: string | null;
-  availableLimit?: string | null;
+  firstStatementDate: string | null;
+  billingCycleDays: number | null;
+  totalLimit: string | null;
+  availableLimit: string | null;
+  displayOrder: number;
+  userId: string;
+  createdAt: Date | null;
 }
 
 interface CardsListProps {
@@ -24,12 +44,107 @@ interface CardsListProps {
   onAdd: () => void;
   onEdit: (card: CreditCardItem) => void;
   onDelete: (id: string) => void;
+  onReorder: (items: CreditCardItem[]) => void;
   currencyCode?: string;
   currentYear?: number;
   currentMonth?: number;
 }
 
-export function CardsList({ cards, onAdd, onEdit, onDelete, currencyCode = 'PKR', currentYear, currentMonth }: CardsListProps) {
+interface SortableCardItemProps {
+  card: CreditCardItem;
+  currencyCode: string;
+  currentYear?: number;
+  currentMonth?: number;
+  calculateDates: (card: CreditCardItem) => string | null;
+  onEdit: (card: CreditCardItem) => void;
+  onDelete: (id: string) => void;
+}
+
+function SortableCardItem({ card, currencyCode, currentYear, currentMonth, calculateDates, onEdit, onDelete }: SortableCardItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: card.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-3 p-4 rounded-lg border hover-elevate"
+      data-testid={`item-card-${card.id}`}
+    >
+      <div
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing touch-none"
+      >
+        <GripVertical className="h-5 w-5 text-muted-foreground" />
+      </div>
+
+      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+        <CreditCard className="h-5 w-5 text-primary" />
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold" data-testid={`text-card-nickname-${card.id}`}>
+          {card.nickname}
+        </div>
+        <div className="text-sm text-muted-foreground mt-1">
+          {card.issuer && <span>{card.issuer} </span>}
+          {card.last4 && <span className="font-mono">••{card.last4}</span>}
+        </div>
+        <div className="text-xs text-muted-foreground mt-1">
+          {currentYear && currentMonth && calculateDates(card) ? (
+            <span>{calculateDates(card)}</span>
+          ) : (
+            <span>Statement: Day {card.statementDay} • Due: Day {card.dueDay}</span>
+          )}
+        </div>
+        {card.totalLimit && (
+          <div className="text-xs text-muted-foreground mt-1">
+            <span>Limit: {formatCurrency(parseFloat(card.totalLimit), currencyCode)}</span>
+            {card.availableLimit && (
+              <span> | Available: {formatCurrency(parseFloat(card.availableLimit), currencyCode)}</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={() => onEdit(card)}
+          data-testid={`button-edit-card-${card.id}`}
+        >
+          <Pencil className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-destructive hover:text-destructive"
+          onClick={() => onDelete(card.id)}
+          data-testid={`button-delete-card-${card.id}`}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function CardsList({ cards, onAdd, onEdit, onDelete, onReorder, currencyCode = 'PKR', currentYear, currentMonth }: CardsListProps) {
   // Calculate statement and due dates for a card based on billing cycle
   const calculateDates = (card: CreditCardItem) => {
     if (!currentYear || !currentMonth) return null;
@@ -81,6 +196,30 @@ export function CardsList({ cards, onAdd, onEdit, onDelete, currencyCode = 'PKR'
 
     return `Statement: ${statementFormatted} - Due: ${dueFormatted}`;
   };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = cards.findIndex((item) => item.id === active.id);
+      const newIndex = cards.findIndex((item) => item.id === over.id);
+
+      const reorderedItems = arrayMove(cards, oldIndex, newIndex);
+      onReorder(reorderedItems);
+    }
+  };
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
@@ -104,65 +243,31 @@ export function CardsList({ cards, onAdd, onEdit, onDelete, currencyCode = 'PKR'
             No credit cards yet. Add one to start tracking cycles!
           </p>
         ) : (
-          <div className="space-y-2">
-            {cards.map((card) => (
-              <div
-                key={card.id}
-                className="flex items-center gap-3 p-4 rounded-lg border hover-elevate"
-                data-testid={`item-card-${card.id}`}
-              >
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <CreditCard className="h-5 w-5 text-primary" />
-                </div>
-                
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold" data-testid={`text-card-nickname-${card.id}`}>
-                    {card.nickname}
-                  </div>
-                  <div className="text-sm text-muted-foreground mt-1">
-                    {card.issuer && <span>{card.issuer} </span>}
-                    {card.last4 && <span className="font-mono">••{card.last4}</span>}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    {currentYear && currentMonth && calculateDates(card) ? (
-                      <span>{calculateDates(card)}</span>
-                    ) : (
-                      <span>Statement: Day {card.statementDay} • Due: Day {card.dueDay}</span>
-                    )}
-                  </div>
-                  {card.totalLimit && (
-                    <div className="text-xs text-muted-foreground mt-1">
-                      <span>Limit: {formatCurrency(parseFloat(card.totalLimit), currencyCode)}</span>
-                      {card.availableLimit && (
-                        <span> | Available: {formatCurrency(parseFloat(card.availableLimit), currencyCode)}</span>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => onEdit(card)}
-                    data-testid={`button-edit-card-${card.id}`}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-destructive hover:text-destructive"
-                    onClick={() => onDelete(card.id)}
-                    data-testid={`button-delete-card-${card.id}`}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={cards.map(card => card.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-2">
+                {cards.map((card) => (
+                  <SortableCardItem
+                    key={card.id}
+                    card={card}
+                    currencyCode={currencyCode}
+                    currentYear={currentYear}
+                    currentMonth={currentMonth}
+                    calculateDates={calculateDates}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                  />
+                ))}
               </div>
-            ))}
-          </div>
+            </SortableContext>
+          </DndContext>
         )}
       </CardContent>
     </Card>

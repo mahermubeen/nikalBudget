@@ -342,6 +342,34 @@ export default function Home() {
     },
   });
 
+  // Reorder incomes mutation
+  const reorderIncomes = useMutation({
+    mutationFn: async (items: Income[]) => {
+      const orderUpdates = items.map((item, index) => ({
+        id: item.id,
+        displayOrder: index,
+      }));
+      await apiRequest('POST', '/api/incomes/reorder', { items: orderUpdates });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/budgets', year, month] });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({ title: "Error", description: "Failed to reorder incomes", variant: "destructive" });
+    },
+  });
+
   // Toggle expense status mutation
   const toggleExpenseStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
@@ -421,6 +449,34 @@ export default function Home() {
     },
   });
 
+  // Reorder expenses mutation
+  const reorderExpenses = useMutation({
+    mutationFn: async (items: Expense[]) => {
+      const orderUpdates = items.map((item, index) => ({
+        id: item.id,
+        displayOrder: index,
+      }));
+      await apiRequest('POST', '/api/expenses/reorder', { items: orderUpdates });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/budgets', year, month] });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({ title: "Error", description: "Failed to reorder expenses", variant: "destructive" });
+    },
+  });
+
   // Update credit card mutation
   const updateCreditCard = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
@@ -470,6 +526,34 @@ export default function Home() {
         return;
       }
       toast({ title: "Error", description: "Failed to delete card", variant: "destructive" });
+    },
+  });
+
+  // Reorder cards mutation
+  const reorderCards = useMutation({
+    mutationFn: async (items: Card[]) => {
+      const orderUpdates = items.map((item, index) => ({
+        id: item.id,
+        displayOrder: index,
+      }));
+      await apiRequest('POST', '/api/cards/reorder', { items: orderUpdates });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/cards', year, month] });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({ title: "Error", description: "Failed to reorder cards", variant: "destructive" });
     },
   });
 
@@ -523,6 +607,34 @@ export default function Home() {
         return;
       }
       toast({ title: "Error", description: "Failed to delete loan", variant: "destructive" });
+    },
+  });
+
+  // Reorder loans mutation
+  const reorderLoans = useMutation({
+    mutationFn: async (items: Loan[]) => {
+      const orderUpdates = items.map((item, index) => ({
+        id: item.id,
+        displayOrder: index,
+      }));
+      await apiRequest('POST', '/api/loans/reorder', { items: orderUpdates });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/loans'] });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({ title: "Error", description: "Failed to reorder loans", variant: "destructive" });
     },
   });
 
@@ -778,6 +890,8 @@ export default function Home() {
                     deleteIncome.mutate(id);
                   }
                 }}
+                onReorder={(items) => reorderIncomes.mutate(items)}
+                pendingStatusId={toggleIncomeStatus.isPending ? toggleIncomeStatus.variables?.id : null}
               />
               
               <ExpenseList
@@ -794,6 +908,8 @@ export default function Home() {
                     deleteExpense.mutate(id);
                   }
                 }}
+                onReorder={(items) => reorderExpenses.mutate(items)}
+                pendingStatusId={toggleExpenseStatus.isPending ? toggleExpenseStatus.variables?.id : null}
               />
             </div>
 
@@ -814,6 +930,7 @@ export default function Home() {
                     deleteCreditCard.mutate(id);
                   }
                 }}
+                onReorder={(items) => reorderCards.mutate(items)}
               />
 
               <LoansList
@@ -829,6 +946,7 @@ export default function Home() {
                     deleteLoan.mutate(id);
                   }
                 }}
+                onReorder={(items) => reorderLoans.mutate(items)}
               />
             </div>
 
