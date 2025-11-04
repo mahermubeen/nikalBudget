@@ -55,6 +55,7 @@ export interface IStorage {
   // Budget operations
   getBudget(userId: string, year: number, month: number): Promise<Budget | undefined>;
   createBudget(budget: InsertBudget): Promise<Budget>;
+  updateBudgetBalanceUsed(budgetId: string, balanceUsed: string): Promise<void>;
   
   // Income operations
   getIncomes(budgetId: string): Promise<Income[]>;
@@ -193,7 +194,7 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(creditCards, eq(cardStatements.cardId, creditCards.id))
       .where(eq(creditCards.userId, userId));
 
-    // Filter by due date falling in the target month
+    // Filter by due date falling in the target month (include all statuses)
     const targetMonthStart = new Date(year, month - 1, 1);
     const targetMonthEnd = new Date(year, month, 0, 23, 59, 59, 999);
 
@@ -277,6 +278,13 @@ export class DatabaseStorage implements IStorage {
       .values(budget)
       .returning();
     return newBudget;
+  }
+
+  async updateBudgetBalanceUsed(budgetId: string, balanceUsed: string): Promise<void> {
+    await db
+      .update(budgets)
+      .set({ balanceUsed })
+      .where(eq(budgets.id, budgetId));
   }
 
   // Income operations

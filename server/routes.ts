@@ -3,6 +3,9 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, getUserId } from "./supabaseAuth";
 import { z } from "zod";
+import { db } from "./db";
+import { budgets } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -181,6 +184,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let statements = await storage.getAllCardStatements(cardId);
       console.log(`Existing statements count: ${statements.length}`);
 
+      // Calculate previous month
+      let prevYear = year;
+      let prevMonth = month - 1;
+      if (prevMonth < 1) {
+        prevMonth = 12;
+        prevYear = year - 1;
+      }
+
+      // Check if statement exists for the previous month
+      const previousMonthStatement = statements.find(s => s.year === prevYear && s.month === prevMonth);
+
+      if (!previousMonthStatement) {
+        console.log(`Creating new statement for previous month ${prevYear}-${prevMonth}`);
+
+        // Auto-create statement for previous month
+        const statementDay = Math.min(card.statementDay, getDaysInMonth(prevYear, prevMonth));
+        const statementDate = new Date(prevYear, prevMonth - 1, statementDay);
+        const dueDate = new Date(statementDate);
+        dueDate.setDate(dueDate.getDate() + card.dayDifference);
+
+        console.log(`Previous month - Statement date: ${formatDate(statementDate)}, Due date: ${formatDate(dueDate)}`);
+
+        const newStatement = await storage.createCardStatement({
+          cardId: cardId,
+          year: prevYear,
+          month: prevMonth,
+          statementDate: formatDate(statementDate),
+          dueDate: formatDate(dueDate),
+          totalDue: '0',
+          minimumDue: '0',
+          availableLimit: '0',
+          status: 'pending',
+          paidDate: null,
+        });
+
+        console.log(`Created previous month statement:`, newStatement.id);
+        statements.push(newStatement);
+      } else {
+        console.log(`Found existing statement for previous month ${prevYear}-${prevMonth}:`, previousMonthStatement.id);
+      }
+
       // Check if statement exists for the current viewing month
       const currentMonthStatement = statements.find(s => s.year === year && s.month === month);
 
@@ -323,12 +367,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Calculate totals
       const incomeTotal = incomes.reduce((sum, inc) => sum + parseFloat(inc.amount), 0);
-      const cardsTotal = cardStatements.reduce((sum, stmt) => sum + parseFloat(stmt.totalDue), 0);
+
+      // Cards total: sum of all CARD_BILL expenses (regardless of payment status)
+      const cardBillExpenses = expenses.filter(exp => exp.kind === 'CARD_BILL');
+      const cardsTotal = cardBillExpenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+
+      // Non-card expenses: REGULAR + LOAN expenses (regardless of payment status)
       const nonCardExpensesTotal = expenses
         .filter(exp => exp.kind !== 'CARD_BILL')
         .reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
-      const totalExpenses = cardsTotal + nonCardExpensesTotal;
+
+      // Total expenses: all expenses combined (regardless of payment status)
+      const totalExpenses = expenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+
+      // After card payments: always use total cards (not just unpaid) so it doesn't change when marking as done
       const afterCardPayments = incomeTotal - cardsTotal;
+      const balanceUsed = parseFloat(budget.balanceUsed || '0');
+      const balance = incomeTotal - balanceUsed; // User's account balance
       const need = Math.max(0, nonCardExpensesTotal - afterCardPayments);
 
       res.json({
@@ -342,6 +397,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           nonCardExpensesTotal,
           totalExpenses,
           afterCardPayments,
+          balanceUsed,
+          balance,
           need,
         },
       });
@@ -495,6 +552,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Expense - Update status
   app.patch('/api/expenses/:id/status', isAuthenticated, async (req: any, res) => {
     try {
+      const userId = getUserId(req);
       const { id } = req.params;
       const { status } = req.body;
 
@@ -508,20 +566,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Expense not found" });
       }
 
-      // If it's a card bill expense, update the card statement's totalDue
+      // If it's a card bill expense, update the card statement's totalDue and status
       if (expense.kind === 'CARD_BILL' && expense.linkedCardStatementId) {
         const statement = await storage.getCardStatementById(expense.linkedCardStatementId);
         if (statement) {
           const currentTotalDue = parseFloat(statement.totalDue);
           const expenseAmount = parseFloat(expense.amount);
           let newTotalDue;
+          let newStatementStatus = statement.status;
+          let newPaidDate = statement.paidDate;
 
           if (status === 'done' && expense.status === 'pending') {
             // Marking as done (paid) - subtract from totalDue
             newTotalDue = Math.max(0, currentTotalDue - expenseAmount).toFixed(2);
           } else if (status === 'pending' && expense.status === 'done') {
-            // Marking back to pending (unpaid) - add back to totalDue
+            // Marking back to pending (unpaid) - add back to totalDue and reset statement
             newTotalDue = (currentTotalDue + expenseAmount).toFixed(2);
+            newStatementStatus = 'pending';
+            newPaidDate = null;
+
+            // Reset balanceUsed if this was the last paid card bill
+            const budget = await db.select().from(budgets).where(eq(budgets.id, expense.budgetId)).limit(1);
+            if (budget.length > 0) {
+              await storage.updateBudgetBalanceUsed(budget[0].id, '0');
+            }
           } else {
             // No change in status, keep same totalDue
             newTotalDue = currentTotalDue.toFixed(2);
@@ -529,6 +597,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           await storage.updateCardStatement(statement.id, {
             totalDue: newTotalDue,
+            status: newStatementStatus,
+            paidDate: newPaidDate,
           });
         }
       }
@@ -574,13 +644,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (expense.kind === 'CARD_BILL' && expense.linkedCardStatementId) {
         const statement = await storage.getCardStatementById(expense.linkedCardStatementId);
         if (statement) {
-          // Subtract the expense amount from totalDue
           const currentTotalDue = parseFloat(statement.totalDue);
           const expenseAmount = parseFloat(expense.amount);
-          const newTotalDue = Math.max(0, currentTotalDue - expenseAmount).toFixed(2);
-          await storage.updateCardStatement(statement.id, {
-            totalDue: newTotalDue,
-          });
+
+          if (expense.status === 'pending') {
+            // Expense was added to totalDue when created, so subtract to undo
+            const newTotalDue = Math.max(0, currentTotalDue - expenseAmount).toFixed(2);
+
+            await storage.updateCardStatement(statement.id, {
+              totalDue: newTotalDue,
+            });
+          } else {
+            // Expense is 'done' - was already subtracted from totalDue when paid
+            // Don't change totalDue, just reset statement status and balance
+            await storage.updateCardStatement(statement.id, {
+              status: 'pending',
+              paidDate: null,
+            });
+
+            // Reset balanceUsed
+            const budget = await db.select().from(budgets).where(eq(budgets.id, expense.budgetId)).limit(1);
+            if (budget.length > 0) {
+              await storage.updateBudgetBalanceUsed(budget[0].id, '0');
+            }
+          }
+
+          // Check if there are any other expenses linked to this statement
+          const allExpenses = await storage.getExpenses(expense.budgetId);
+          const otherCardExpenses = allExpenses.filter(
+            exp => exp.kind === 'CARD_BILL' &&
+                   exp.linkedCardStatementId === expense.linkedCardStatementId &&
+                   exp.id !== expense.id
+          );
+
+          // If no other expenses linked to this statement, reset it to defaults
+          if (otherCardExpenses.length === 0) {
+            await storage.updateCardStatement(statement.id, {
+              totalDue: '0',
+              status: 'pending',
+              paidDate: null,
+            });
+          }
         }
       }
 
@@ -592,15 +696,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Cash-Out Planner - Reset cash-out plan
+  app.delete('/api/budgets/:year/:month/cash-out', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getUserId(req);
+      const year = parseInt(req.params.year);
+      const month = parseInt(req.params.month);
+
+      // Get budget
+      const budget = await storage.getBudget(userId, year, month);
+      if (!budget) {
+        return res.status(404).json({ message: "Budget not found" });
+      }
+
+      // Reset balance used to 0
+      await storage.updateBudgetBalanceUsed(budget.id, '0');
+
+      res.json({ message: "Cash-out plan reset successfully" });
+    } catch (error) {
+      console.error("Error resetting cash-out plan:", error);
+      res.status(500).json({ message: "Failed to reset cash-out plan" });
+    }
+  });
+
   // Cash-Out Planner - Apply withdrawals
   app.post('/api/budgets/:year/:month/cash-out', isAuthenticated, async (req: any, res) => {
     try {
       const userId = getUserId(req);
       const year = parseInt(req.params.year);
       const month = parseInt(req.params.month);
-      const { withdrawals } = req.body;
+      const { withdrawals, balance } = req.body;
 
-      if (!Array.isArray(withdrawals) || withdrawals.length === 0) {
+      if (!Array.isArray(withdrawals)) {
         return res.status(400).json({ message: "Invalid withdrawals data" });
       }
 
@@ -610,28 +737,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         budget = await storage.createBudget({ userId, year, month });
       }
 
-      // Get all cards to validate and get nicknames
-      const allCards = await storage.getCreditCards(userId);
-      const cardMap = new Map(allCards.map(c => [c.id, c]));
+      // Store balance used (replace, not increment)
+      // This allows applying the plan multiple times to adjust the balance
+      const balanceToStore = balance && balance > 0 ? balance.toString() : '0';
+      await storage.updateBudgetBalanceUsed(budget.id, balanceToStore);
 
-      // Create expense for each withdrawal
-      for (const withdrawal of withdrawals) {
-        const { cardId, amount } = withdrawal;
-        const card = cardMap.get(cardId);
-        
-        if (!card) continue;
-        if (amount <= 0) continue;
+      const today = new Date().toISOString().split('T')[0];
 
-        await storage.createExpense({
-          budgetId: budget.id,
-          label: `Cash-out – ${card.nickname}`,
-          amount: amount.toString(),
-          recurring: false,
-          status: 'pending',
-          paidDate: null,
-          kind: 'REGULAR',
-          linkedCardStatementId: null,
-          linkedLoanId: null,
+      // First, mark all CARD_BILL expenses in this budget as done
+      // (this will update the card statements' totalDue)
+      const allExpenses = await storage.getExpenses(budget.id);
+      for (const expense of allExpenses) {
+        if (expense.kind === 'CARD_BILL' && expense.status === 'pending') {
+          await storage.updateExpenseStatus(expense.id, 'done', today);
+        }
+      }
+
+      // Then, mark all card statements due this month as paid
+      const cardStatements = await storage.getCardStatementsDueInMonth(userId, year, month);
+      for (const statement of cardStatements) {
+        // Mark card statement as paid
+        await storage.updateCardStatement(statement.id, {
+          status: 'done',
+          paidDate: today,
         });
       }
 

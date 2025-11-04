@@ -146,6 +146,7 @@ export const budgets = pgTable("budgets", {
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   year: integer("year").notNull(),
   month: integer("month").notNull(), // 1-12
+  balanceUsed: decimal("balance_used", { precision: 12, scale: 2 }).default('0').notNull(), // Balance used from afterCardPayments
   createdAt: timestamp("created_at").defaultNow(),
 });
 

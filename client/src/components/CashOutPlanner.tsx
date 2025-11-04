@@ -21,57 +21,70 @@ interface CashOutPlannerProps {
   onOpenChange: (open: boolean) => void;
   cards: CardOption[];
   need: number;
+  maxBalance: number; // afterCardPayments value
   currencyCode: string;
-  onApply: (withdrawals: { cardId: string; amount: number }[]) => void;
+  onApply: (withdrawals: { cardId: string; amount: number }[], balance: number) => void;
   isPending?: boolean;
 }
 
-export function CashOutPlanner({ 
-  open, 
-  onOpenChange, 
-  cards, 
-  need, 
+export function CashOutPlanner({
+  open,
+  onOpenChange,
+  cards,
+  need,
+  maxBalance,
   currencyCode,
   onApply,
-  isPending 
+  isPending
 }: CashOutPlannerProps) {
   const [withdrawals, setWithdrawals] = useState<Record<string, number>>({});
+  const [balance, setBalance] = useState<number>(0);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Initialize withdrawals with smart suggestion when dialog opens
   useEffect(() => {
-    if (open && cards.length > 0) {
-      const suggested = suggestWithdrawals();
-      setWithdrawals(suggested);
+    if (open) {
+      const { suggestedBalance, suggestedWithdrawals } = suggestPlan();
+      setBalance(suggestedBalance);
+      setWithdrawals(suggestedWithdrawals);
       setErrors({});
     }
-  }, [open, cards, need]);
+  }, [open, cards, need, maxBalance]);
 
-  // Smart suggestion algorithm: prioritize card with later due date, then larger limit
-  const suggestWithdrawals = (): Record<string, number> => {
-    if (cards.length === 0 || need <= 0) return {};
+  // Smart suggestion algorithm: prioritize balance first, then cards
+  const suggestPlan = (): { suggestedBalance: number; suggestedWithdrawals: Record<string, number> } => {
+    if (need <= 0) return { suggestedBalance: 0, suggestedWithdrawals: {} };
 
-    // Sort cards by due date (later first), then by available limit (larger first)
-    const sortedCards = [...cards].sort((a, b) => {
-      const dateCompare = b.dueDate.localeCompare(a.dueDate);
-      if (dateCompare !== 0) return dateCompare;
-      return b.availableLimit - a.availableLimit;
-    });
+    // Step 1: Use balance first (up to maxBalance)
+    const balanceToUse = Math.min(need, maxBalance);
+    let remaining = need - balanceToUse;
 
-    const result: Record<string, number> = {};
-    let remaining = need;
+    // Step 2: If still need more, use cards
+    const withdrawals: Record<string, number> = {};
 
-    for (const card of sortedCards) {
-      if (remaining <= 0) break;
-      
-      const amount = Math.min(remaining, card.availableLimit);
-      if (amount > 0) {
-        result[card.id] = amount;
-        remaining -= amount;
+    if (remaining > 0 && cards.length > 0) {
+      // Sort cards by due date (later first), then by available limit (larger first)
+      const sortedCards = [...cards].sort((a, b) => {
+        const dateCompare = b.dueDate.localeCompare(a.dueDate);
+        if (dateCompare !== 0) return dateCompare;
+        return b.availableLimit - a.availableLimit;
+      });
+
+      for (const card of sortedCards) {
+        if (remaining <= 0) break;
+
+        const amount = Math.min(remaining, card.availableLimit);
+        if (amount > 0) {
+          withdrawals[card.id] = amount;
+          remaining -= amount;
+        }
       }
     }
 
-    return result;
+    return {
+      suggestedBalance: balanceToUse,
+      suggestedWithdrawals: withdrawals,
+    };
   };
 
   const handleWithdrawalChange = (cardId: string, value: number) => {
@@ -99,8 +112,9 @@ export function CashOutPlanner({
   };
 
   const totalWithdrawal = Object.values(withdrawals).reduce((sum, val) => sum + val, 0);
+  const totalCoverage = totalWithdrawal + balance;
   const hasErrors = Object.keys(errors).length > 0;
-  const isValid = totalWithdrawal > 0 && !hasErrors;
+  const isValid = !hasErrors; // Allow applying even with 0 (to reset balance)
 
   const handleApply = () => {
     if (!isValid) return;
@@ -109,7 +123,7 @@ export function CashOutPlanner({
       .filter(([, amount]) => amount > 0)
       .map(([cardId, amount]) => ({ cardId, amount }));
 
-    onApply(withdrawalList);
+    onApply(withdrawalList, balance);
   };
 
   return (
@@ -121,7 +135,7 @@ export function CashOutPlanner({
         
         <div className="space-y-6 py-4">
           {/* Summary */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <Card className="p-4">
               <div className="text-sm text-muted-foreground">Need to Cover</div>
               <div className="text-2xl font-mono font-bold text-destructive mt-1" data-testid="text-planner-need">
@@ -130,30 +144,64 @@ export function CashOutPlanner({
             </Card>
 
             <Card className="p-4">
-              <div className="text-sm text-muted-foreground">Total Withdrawal</div>
+              <div className="text-sm text-muted-foreground">Card Withdrawals</div>
               <div className="text-2xl font-mono font-bold text-primary mt-1" data-testid="text-planner-total">
                 {formatCurrency(totalWithdrawal, currencyCode)}
               </div>
             </Card>
+
+            <Card className="p-4">
+              <div className="text-sm text-muted-foreground">Total Coverage</div>
+              <div className={`text-2xl font-mono font-bold mt-1 ${totalCoverage >= need ? 'text-green-600' : 'text-yellow-600'}`} data-testid="text-planner-coverage">
+                {formatCurrency(totalCoverage, currencyCode)}
+              </div>
+            </Card>
           </div>
 
-          {need <= 0 ? (
+          {/* Balance Slider */}
+          <div className="p-4 border rounded-lg space-y-3 bg-green-50 dark:bg-green-950/20">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-base font-semibold">Account Balance</div>
+                <div className="text-sm text-muted-foreground">
+                  Available: {formatCurrency(maxBalance, currencyCode)}
+                </div>
+              </div>
+              <div className="font-mono font-bold text-green-600 text-xl">
+                {formatCurrency(balance, currencyCode)}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Slider
+                value={[balance]}
+                onValueChange={([value]) => setBalance(value)}
+                max={maxBalance}
+                step={100}
+                className="w-full"
+                data-testid="slider-balance"
+              />
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>₹0</span>
+                <span>{formatCurrency(maxBalance, currencyCode)}</span>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Use your available balance (Income - Cards) to cover expenses.
+            </p>
+          </div>
+
+          {cards.length === 0 && need > 0 ? (
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                You don't need cash-out this month. Your income covers all expenses!
+                No credit cards available for withdrawals. You can still use your account balance.
               </AlertDescription>
             </Alert>
-          ) : cards.length === 0 ? (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                No credit cards available. Add cards first to use the cash-out planner.
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <>
-              <div className="space-y-4">
+          ) : null}
+
+          {/* Card Withdrawal Sliders */}
+          {cards.length > 0 && (
+            <div className="space-y-4">
                 {cards.map((card) => {
                   const withdrawal = withdrawals[card.id] || 0;
                   const error = errors[card.id];
@@ -193,18 +241,18 @@ export function CashOutPlanner({
                     </div>
                   );
                 })}
-              </div>
+            </div>
+          )}
 
-              {totalWithdrawal < need && (
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    Current withdrawal ({formatCurrency(totalWithdrawal, currencyCode)}) is less than needed ({formatCurrency(need, currencyCode)}). 
-                    {totalWithdrawal === 0 ? ' Adjust the sliders to plan your withdrawals.' : ' Consider increasing withdrawals or adjusting your budget.'}
-                  </AlertDescription>
-                </Alert>
-              )}
-            </>
+          {/* Coverage Alert */}
+          {need > 0 && totalCoverage < need && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Current coverage ({formatCurrency(totalCoverage, currencyCode)}) is less than needed ({formatCurrency(need, currencyCode)}).
+                {totalCoverage === 0 ? ' Add balance or adjust the sliders to plan your withdrawals.' : ` You still need ${formatCurrency(need - totalCoverage, currencyCode)} more.`}
+              </AlertDescription>
+            </Alert>
           )}
         </div>
 
@@ -221,7 +269,7 @@ export function CashOutPlanner({
           </Button>
           <Button
             onClick={handleApply}
-            disabled={isPending || !isValid || need <= 0 || cards.length === 0}
+            disabled={isPending || !isValid}
             className="h-12"
             data-testid="button-apply-planner"
           >

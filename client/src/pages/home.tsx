@@ -13,6 +13,7 @@ import { AddExpenseDialog } from "@/components/AddExpenseDialog";
 import { AddCardDialog } from "@/components/AddCardDialog";
 import { AddLoanDialog } from "@/components/AddLoanDialog";
 import { CashOutPlanner } from "@/components/CashOutPlanner";
+import { CashOutHistory } from "@/components/CashOutHistory";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -33,6 +34,8 @@ interface BudgetData {
     nonCardExpensesTotal: number;
     totalExpenses: number;
     afterCardPayments: number;
+    balanceUsed: number;
+    balance: number;
     need: number;
   };
 }
@@ -60,6 +63,7 @@ export default function Home() {
   const [showAddCard, setShowAddCard] = useState(false);
   const [showAddLoan, setShowAddLoan] = useState(false);
   const [showCashOutPlanner, setShowCashOutPlanner] = useState(false);
+  const [showCashOutHistory, setShowCashOutHistory] = useState(false);
 
   // Edit states - track which item is being edited
   const [editingIncome, setEditingIncome] = useState<Income | null>(null);
@@ -119,6 +123,8 @@ export default function Home() {
     nonCardExpensesTotal: 0,
     totalExpenses: 0,
     afterCardPayments: 0,
+    balanceUsed: 0,
+    balance: 0,
     need: 0,
   };
   const cards = cardsData?.cards || [];
@@ -130,6 +136,8 @@ export default function Home() {
   const nonCardExpensesTotal = totals.nonCardExpensesTotal;
   const totalExpenses = totals.totalExpenses;
   const afterCardPayments = totals.afterCardPayments;
+  const balanceUsed = totals.balanceUsed;
+  const balance = totals.balance;
   const need = totals.need;
 
   // Month navigation
@@ -342,7 +350,7 @@ export default function Home() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/budgets', year, month] });
-      queryClient.invalidateQueries({ queryKey: ['/api/cards', year, month] }); // Refresh cards to update available limit
+      queryClient.invalidateQueries({ queryKey: ['/api/cards', year, month] }); // Refresh cards and statements
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
@@ -520,11 +528,12 @@ export default function Home() {
 
   // Apply cash-out plan mutation
   const applyCashOutPlan = useMutation({
-    mutationFn: async (withdrawals: { cardId: string; amount: number }[]) => {
-      await apiRequest('POST', `/api/budgets/${year}/${month}/cash-out`, { withdrawals });
+    mutationFn: async ({ withdrawals, balance }: { withdrawals: { cardId: string; amount: number }[]; balance: number }) => {
+      await apiRequest('POST', `/api/budgets/${year}/${month}/cash-out`, { withdrawals, balance });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/budgets', year, month] });
+      queryClient.invalidateQueries({ queryKey: ['/api/cards', year, month] }); // Refresh cards to update available limit
       setShowCashOutPlanner(false);
       toast({ title: "Cash-out plan applied successfully" });
     },
@@ -541,6 +550,33 @@ export default function Home() {
         return;
       }
       toast({ title: "Error", description: "Failed to apply cash-out plan", variant: "destructive" });
+    },
+  });
+
+  // Reset cash-out plan mutation
+  const resetCashOutPlan = useMutation({
+    mutationFn: async () => {
+      await apiRequest('DELETE', `/api/budgets/${year}/${month}/cash-out`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/budgets', year, month] });
+      queryClient.invalidateQueries({ queryKey: ['/api/cards', year, month] });
+      setShowCashOutHistory(false);
+      toast({ title: "Cash-out plan reset successfully" });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({ title: "Error", description: "Failed to reset cash-out plan", variant: "destructive" });
     },
   });
 
@@ -618,7 +654,7 @@ export default function Home() {
         ) : (
           <div className="space-y-6">
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 ${cardsTotal > 0 ? 'xl:grid-cols-6' : 'xl:grid-cols-5'}`}>
               <KPICard
                 label="Income"
                 amount={formatCurrency(incomeTotal, currencyCode)}
@@ -649,35 +685,70 @@ export default function Home() {
                 variant="danger"
                 data-testid="kpi-total-expenses"
               />
+              {cardsTotal > 0 && (
+                <KPICard
+                  label="After Cards"
+                  amount={formatCurrency(afterCardPayments, currencyCode)}
+                  subtext="Income - Cards"
+                  variant={afterCardPayments >= 0 ? 'success' : 'danger'}
+                  data-testid="kpi-after-cards"
+                />
+              )}
               <KPICard
-                label="After Cards"
-                amount={formatCurrency(afterCardPayments, currencyCode)}
-                subtext="Income - Cards"
-                variant={afterCardPayments >= 0 ? 'success' : 'danger'}
-                data-testid="kpi-after-cards"
+                label="Balance"
+                amount={formatCurrency(balance, currencyCode)}
+                subtext="Account balance"
+                icon={Wallet}
+                variant={balance >= 0 ? 'success' : 'danger'}
+                data-testid="kpi-balance"
               />
             </div>
 
             {/* Need / Cash-Out Section */}
-            {need > 0 && (
-              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-6">
+            {(need > 0 || balanceUsed > 0) && (
+              <div className={`${need > 0 ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-green-500/10 border-green-500/30'} border rounded-lg p-6`}>
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div>
-                    <h3 className="text-lg font-semibold">Cash-Out Needed</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      You need <span className="font-mono font-bold text-yellow-600 dark:text-yellow-500" data-testid="text-need-amount">
-                        {formatCurrency(need, currencyCode)}
-                      </span> to cover non-card expenses
-                    </p>
+                    {need > 0 ? (
+                      <>
+                        <h3 className="text-lg font-semibold">Cash-Out Needed</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          You need <span className="font-mono font-bold text-yellow-600 dark:text-yellow-500" data-testid="text-need-amount">
+                            {formatCurrency(need, currencyCode)}
+                          </span> to cover non-card expenses
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <h3 className="text-lg font-semibold">Cash-Out Plan Active</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Using <span className="font-mono font-bold text-green-600 dark:text-green-500">
+                            {formatCurrency(balanceUsed, currencyCode)}
+                          </span> from your account balance
+                        </p>
+                      </>
+                    )}
                   </div>
-                  <Button
-                    onClick={() => setShowCashOutPlanner(true)}
-                    className="w-full sm:w-auto h-12"
-                    data-testid="button-open-planner"
-                  >
-                    <Calculator className="mr-2 h-4 w-4" />
-                    Plan Cash-Out
-                  </Button>
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <Button
+                      onClick={() => setShowCashOutHistory(true)}
+                      variant="outline"
+                      className="flex-1 sm:flex-initial h-12"
+                      data-testid="button-open-history"
+                    >
+                      History
+                    </Button>
+                    {need > 0 && (
+                      <Button
+                        onClick={() => setShowCashOutPlanner(true)}
+                        className="flex-1 sm:flex-initial h-12"
+                        data-testid="button-open-planner"
+                      >
+                        <Calculator className="mr-2 h-4 w-4" />
+                        Plan Cash-Out
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -832,9 +903,19 @@ export default function Home() {
         onOpenChange={setShowCashOutPlanner}
         cards={cardOptions}
         need={need}
+        maxBalance={afterCardPayments}
         currencyCode={currencyCode}
-        onApply={(withdrawals) => applyCashOutPlan.mutate(withdrawals)}
+        onApply={(withdrawals, balance) => applyCashOutPlan.mutate({ withdrawals, balance })}
         isPending={applyCashOutPlan.isPending}
+      />
+
+      <CashOutHistory
+        open={showCashOutHistory}
+        onOpenChange={setShowCashOutHistory}
+        balanceUsed={balanceUsed}
+        currencyCode={currencyCode}
+        onReset={() => resetCashOutPlan.mutate()}
+        isPending={resetCashOutPlan.isPending}
       />
     </div>
   );
