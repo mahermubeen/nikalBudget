@@ -768,16 +768,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         budget = await storage.createBudget({ userId, year, month });
       }
 
-      // Delete any existing cash-out incomes first (to allow re-applying)
-      const existingIncomes = await storage.getIncomes(budget.id);
-      for (const income of existingIncomes) {
-        if (income.source.startsWith('Cash-out –')) {
-          await storage.deleteIncome(income.id);
-        }
-      }
+      // Get existing cash-out total
+      const existingBalanceUsed = parseFloat(budget.balanceUsed || '0');
 
-      // Calculate total cash-out amount
-      let totalCashOut = 0;
+      // Calculate new total cash-out amount
+      let newCashOut = 0;
 
       // Create cash-out incomes for each withdrawal
       // These are tracked as incomes to increase the balance
@@ -785,7 +780,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const card = await storage.getCardById(withdrawal.cardId);
         if (!card) continue;
 
-        totalCashOut += withdrawal.amount;
+        newCashOut += withdrawal.amount;
 
         await storage.createIncome({
           budgetId: budget.id,
@@ -797,7 +792,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Store total cash-out amount in balanceUsed
+      // Add new cash-out to existing total
+      const totalCashOut = existingBalanceUsed + newCashOut;
       await storage.updateBudgetBalanceUsed(budget.id, totalCashOut.toString());
 
       res.json({ message: "Cash-out plan applied successfully" });

@@ -708,9 +708,9 @@ export default function Home() {
               />
             </div>
 
-            {/* Need / Cash-Out Section */}
-            {(need > 0 || balanceUsed > 0) && (
-              <div className={`${need > 0 ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-green-500/10 border-green-500/30'} border rounded-lg p-6`}>
+            {/* Cash-Out Section - Show when there are cards with available limits */}
+            {cardOptions.length > 0 && (
+              <div className={`${need > 0 ? 'bg-yellow-500/10 border-yellow-500/30' : balanceUsed > 0 ? 'bg-green-500/10 border-green-500/30' : 'bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800'} border rounded-lg p-6`}>
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div>
                     {need > 0 ? (
@@ -722,13 +722,20 @@ export default function Home() {
                           </span> to cover non-card expenses
                         </p>
                       </>
-                    ) : (
+                    ) : balanceUsed > 0 ? (
                       <>
                         <h3 className="text-lg font-semibold">Cash-Out Plan Active</h3>
                         <p className="text-sm text-muted-foreground mt-1">
-                          Using <span className="font-mono font-bold text-green-600 dark:text-green-500">
+                          Total withdrawn: <span className="font-mono font-bold text-green-600 dark:text-green-500">
                             {formatCurrency(balanceUsed, currencyCode)}
-                          </span> from your account balance
+                          </span> from credit cards
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <h3 className="text-lg font-semibold">Cash-Out Manager</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Withdraw cash from your credit cards when needed
                         </p>
                       </>
                     )}
@@ -742,16 +749,14 @@ export default function Home() {
                     >
                       History
                     </Button>
-                    {need > 0 && (
-                      <Button
-                        onClick={() => setShowCashOutPlanner(true)}
-                        className="flex-1 sm:flex-initial h-12"
-                        data-testid="button-open-planner"
-                      >
-                        <Calculator className="mr-2 h-4 w-4" />
-                        Plan Cash-Out
-                      </Button>
-                    )}
+                    <Button
+                      onClick={() => setShowCashOutPlanner(true)}
+                      className="flex-1 sm:flex-initial h-12"
+                      data-testid="button-open-planner"
+                    >
+                      <Calculator className="mr-2 h-4 w-4" />
+                      Plan Cash-Out
+                    </Button>
                   </div>
                 </div>
               </div>

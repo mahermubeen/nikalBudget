@@ -35,6 +35,10 @@ export function CashOutHistory({
   // Get cash-out income items
   const cashOutIncomes = incomes.filter(inc => inc.source.startsWith('Cash-out –'));
 
+  // Calculate the actual before balance (beforeBalance already includes cash-out, so subtract it)
+  const actualBeforeBalance = beforeBalance - totalCashOut;
+  const currentBalance = beforeBalance; // This is afterCardPayments which now includes cash-out
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -55,7 +59,7 @@ export function CashOutHistory({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Before Cash-Out:</span>
-                      <span className="font-mono font-semibold">{formatCurrency(beforeBalance, currencyCode)}</span>
+                      <span className="font-mono font-semibold">{formatCurrency(actualBeforeBalance, currencyCode)}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Cash-Out Amount:</span>
@@ -64,7 +68,7 @@ export function CashOutHistory({
                     <div className="border-t pt-2 flex items-center justify-between">
                       <span className="font-medium">Current Balance:</span>
                       <span className="text-2xl font-mono font-bold text-green-600 dark:text-green-400">
-                        {formatCurrency(beforeBalance + totalCashOut, currencyCode)}
+                        {formatCurrency(currentBalance, currencyCode)}
                       </span>
                     </div>
                   </div>
