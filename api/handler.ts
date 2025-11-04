@@ -464,6 +464,11 @@ async function registerRoutes(app: express.Express) {
         .filter(exp => exp.kind === 'CARD_BILL' && exp.status === 'done')
         .reduce((sum, exp) => sum + safeParseFloat(exp.amount), 0);
 
+      // Calculate paid non-card expenses (marked as done)
+      const paidNonCardExpenses = expenses
+        .filter(exp => exp.kind !== 'CARD_BILL' && exp.status === 'done')
+        .reduce((sum, exp) => sum + safeParseFloat(exp.amount), 0);
+
       // Non-card expenses: REGULAR + LOAN expenses (regardless of payment status)
       const nonCardExpensesTotal = expenses
         .filter(exp => exp.kind !== 'CARD_BILL')
@@ -490,9 +495,9 @@ async function registerRoutes(app: express.Express) {
       // balanceUsed stores total cash-out amount
       const balanceUsed = safeParseFloat(budget.balanceUsed || '0');
 
-      // Balance: Income minus paid card bills
+      // Balance: Income minus all paid expenses (card bills + regular + loans)
       // Cash-outs are already included in incomeTotal (as income items)
-      const balance = incomeTotal - paidCardExpenses;
+      const balance = incomeTotal - paidCardExpenses - paidNonCardExpenses;
 
       const need = Math.max(0, nonCardExpensesTotal - afterCardPayments);
 
@@ -543,6 +548,11 @@ async function registerRoutes(app: express.Express) {
         status: 'pending',
         paidDate: null,
       });
+
+      // If this is a recurring income, automatically add it to all existing future months
+      if (recurring) {
+        await storage.copyRecurringIncomeToFutureMonths(userId, year, month, income);
+      }
 
       res.json({ income });
     } catch (error) {
@@ -644,6 +654,11 @@ async function registerRoutes(app: express.Express) {
         linkedCardStatementId: null,
         linkedLoanId: null,
       });
+
+      // If this is a recurring REGULAR expense, automatically add it to all existing future months
+      if (recurring) {
+        await storage.copyRecurringExpenseToFutureMonths(userId, year, month, expense);
+      }
 
       res.json({ expense });
     } catch (error) {

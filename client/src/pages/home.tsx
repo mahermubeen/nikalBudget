@@ -114,6 +114,15 @@ export default function Home() {
     enabled: !!user,
   });
 
+  // Check if next month budget exists
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  const { data: nextMonthBudgetData } = useQuery<BudgetData>({
+    queryKey: ['/api/budgets', nextYear, nextMonth],
+    enabled: !!user,
+    retry: false, // Don't retry if next month doesn't exist
+  });
+
   const budget = budgetData?.budget;
   const incomes = budgetData?.incomes || [];
   const expenses = budgetData?.expenses || [];
@@ -950,23 +959,25 @@ export default function Home() {
               />
             </div>
 
-            {/* Create Next Month */}
-            <div className="flex justify-center">
-              <Button
-                variant="outline"
-                onClick={() => createNextMonth.mutate()}
-                disabled={createNextMonth.isPending}
-                className="h-12"
-                data-testid="button-create-next-month"
-              >
-                {createNextMonth.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <ArrowRight className="mr-2 h-4 w-4" />
-                )}
-                Create Next Month
-              </Button>
-            </div>
+            {/* Create Next Month - only show if next month doesn't exist */}
+            {!nextMonthBudgetData && (
+              <div className="flex justify-center">
+                <Button
+                  variant="outline"
+                  onClick={() => createNextMonth.mutate()}
+                  disabled={createNextMonth.isPending}
+                  className="h-12"
+                  data-testid="button-create-next-month"
+                >
+                  {createNextMonth.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <ArrowRight className="mr-2 h-4 w-4" />
+                  )}
+                  Create Next Month
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </main>

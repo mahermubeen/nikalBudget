@@ -434,6 +434,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .filter(exp => exp.kind === 'CARD_BILL' && exp.status === 'done')
         .reduce((sum, exp) => sum + safeParseFloat(exp.amount), 0);
 
+      // Calculate paid non-card expenses (marked as done)
+      const paidNonCardExpenses = expenses
+        .filter(exp => exp.kind !== 'CARD_BILL' && exp.status === 'done')
+        .reduce((sum, exp) => sum + safeParseFloat(exp.amount), 0);
+
       // Non-card expenses: REGULAR + LOAN expenses (regardless of payment status)
       const nonCardExpensesTotal = expenses
         .filter(exp => exp.kind !== 'CARD_BILL')
@@ -460,9 +465,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // balanceUsed stores total cash-out amount
       const balanceUsed = safeParseFloat(budget.balanceUsed || '0');
 
-      // Balance: Income minus paid card bills
+      // Balance: Income minus all paid expenses (card bills + regular + loans)
       // Cash-outs are already included in incomeTotal (as income items)
-      const balance = incomeTotal - paidCardExpenses;
+      const balance = incomeTotal - paidCardExpenses - paidNonCardExpenses;
 
       const need = Math.max(0, nonCardExpensesTotal - afterCardPayments);
 
@@ -514,6 +519,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: 'pending',
         paidDate: null,
       });
+
+      // If this is a recurring income, automatically add it to all existing future months
+      if (recurring) {
+        await storage.copyRecurringIncomeToFutureMonths(userId, year, month, income);
+      }
 
       res.json({ income });
     } catch (error) {
@@ -638,6 +648,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         linkedCardStatementId,
         linkedLoanId: null,
       });
+
+      // If this is a recurring REGULAR expense, automatically add it to all existing future months
+      if (recurring && expenseKind === 'REGULAR') {
+        await storage.copyRecurringExpenseToFutureMonths(userId, year, month, expense);
+      }
 
       res.json({ expense });
     } catch (error) {

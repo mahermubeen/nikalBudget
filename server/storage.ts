@@ -79,6 +79,10 @@ export interface IStorage {
   // Get recurring items for next month creation
   getRecurringIncomes(userId: string, year: number, month: number): Promise<Income[]>;
   getRecurringExpenses(userId: string, year: number, month: number): Promise<Expense[]>;
+
+  // Copy recurring items to future months
+  copyRecurringIncomeToFutureMonths(userId: string, year: number, month: number, income: Income): Promise<void>;
+  copyRecurringExpenseToFutureMonths(userId: string, year: number, month: number, expense: Expense): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -426,6 +430,96 @@ export class DatabaseStorage implements IStorage {
           eq(expenses.kind, 'REGULAR')
         )
       );
+  }
+
+  async copyRecurringIncomeToFutureMonths(userId: string, year: number, month: number, income: Income): Promise<void> {
+    // Get all budgets for this user
+    const allBudgets = await db
+      .select()
+      .from(budgets)
+      .where(eq(budgets.userId, userId))
+      .orderBy(asc(budgets.year), asc(budgets.month));
+
+    // Filter to only future months
+    const futureBudgets = allBudgets.filter(b => {
+      if (b.year > year) return true;
+      if (b.year === year && b.month > month) return true;
+      return false;
+    });
+
+    // For each future budget, check if this income already exists
+    for (const futureBudget of futureBudgets) {
+      // Check if an income with the same source already exists in this budget
+      const existingIncomes = await db
+        .select()
+        .from(incomes)
+        .where(
+          and(
+            eq(incomes.budgetId, futureBudget.id),
+            eq(incomes.source, income.source),
+            eq(incomes.recurring, true)
+          )
+        );
+
+      // Only create if it doesn't exist
+      if (existingIncomes.length === 0) {
+        await this.createIncome({
+          budgetId: futureBudget.id,
+          source: income.source,
+          amount: income.amount,
+          recurring: true,
+          status: 'pending',
+          paidDate: null,
+        });
+      }
+    }
+  }
+
+  async copyRecurringExpenseToFutureMonths(userId: string, year: number, month: number, expense: Expense): Promise<void> {
+    // Get all budgets for this user
+    const allBudgets = await db
+      .select()
+      .from(budgets)
+      .where(eq(budgets.userId, userId))
+      .orderBy(asc(budgets.year), asc(budgets.month));
+
+    // Filter to only future months
+    const futureBudgets = allBudgets.filter(b => {
+      if (b.year > year) return true;
+      if (b.year === year && b.month > month) return true;
+      return false;
+    });
+
+    // For each future budget, check if this expense already exists
+    for (const futureBudget of futureBudgets) {
+      // Check if an expense with the same label already exists in this budget
+      const existingExpenses = await db
+        .select()
+        .from(expenses)
+        .where(
+          and(
+            eq(expenses.budgetId, futureBudget.id),
+            eq(expenses.label, expense.label),
+            eq(expenses.recurring, true),
+            eq(expenses.kind, 'REGULAR')
+          )
+        );
+
+      // Only create if it doesn't exist
+      if (existingExpenses.length === 0) {
+        await this.createExpense({
+          budgetId: futureBudget.id,
+          label: expense.label,
+          amount: expense.amount,
+          recurring: true,
+          status: 'pending',
+          paidDate: null,
+          kind: 'REGULAR',
+          linkedCardStatementId: null,
+          linkedLoanId: null,
+        });
+      }
+    }
   }
 
   // Batch order update methods
