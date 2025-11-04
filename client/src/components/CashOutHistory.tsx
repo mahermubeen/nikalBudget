@@ -29,11 +29,12 @@ export function CashOutHistory({
   beforeBalance,
   incomes
 }: CashOutHistoryProps) {
-  const hasActivePlan = balanceUsed > 0;
-  const totalCashOut = balanceUsed;
-
   // Get cash-out income items
   const cashOutIncomes = incomes.filter(inc => inc.source.startsWith('Cash-out –'));
+
+  // Calculate total cash-out from actual income items (not from balanceUsed prop which can be stale)
+  const totalCashOut = cashOutIncomes.reduce((sum, inc) => sum + parseFloat(inc.amount), 0);
+  const hasActivePlan = totalCashOut > 0;
 
   // Calculate the actual before balance (beforeBalance already includes cash-out, so subtract it)
   const actualBeforeBalance = beforeBalance - totalCashOut;
