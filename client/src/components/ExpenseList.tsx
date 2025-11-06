@@ -83,92 +83,183 @@ function SortableExpenseItem({ expense, currencyCode, pendingStatusId, deletingI
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-3 p-3 rounded-lg border hover-elevate"
+      className="p-3 rounded-lg border hover-elevate"
       data-testid={`item-expense-${expense.id}`}
     >
-      <div
-        {...attributes}
-        {...listeners}
-        className="cursor-grab active:cursor-grabbing touch-none"
-      >
-        <GripVertical className="h-5 w-5 text-muted-foreground" />
-      </div>
+      {/* Mobile Layout: Stack vertically */}
+      <div className="flex items-start gap-2 sm:hidden">
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing touch-none mt-1"
+        >
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </div>
 
-      <div className="relative flex items-center justify-center h-5 w-5">
-        {pendingStatusId === expense.id ? (
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-        ) : (
-          <Checkbox
-            checked={expense.status === 'done'}
-            onCheckedChange={() => onToggleStatus(expense.id, expense.status)}
-            className="h-5 w-5"
-            data-testid={`checkbox-expense-${expense.id}`}
-          />
-        )}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium" data-testid={`text-expense-label-${expense.id}`}>
-            {expense.label}
-          </span>
-          {expense.recurring && <RecurringBadge />}
-          {expense.kind === 'CARD_BILL' && (
-            <Badge variant="outline" className="text-xs gap-1">
-              <CreditCard className="h-3 w-3" />
-              Card
-            </Badge>
-          )}
-          {expense.kind === 'LOAN' && (
-            <Badge variant="outline" className="text-xs gap-1">
-              <DollarSign className="h-3 w-3" />
-              Loan
-            </Badge>
+        <div className="relative flex items-center justify-center h-5 w-5 mt-1 flex-shrink-0">
+          {pendingStatusId === expense.id ? (
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          ) : (
+            <Checkbox
+              checked={expense.status === 'done'}
+              onCheckedChange={() => onToggleStatus(expense.id, expense.status)}
+              className="h-5 w-5"
+              data-testid={`checkbox-expense-${expense.id}`}
+            />
           )}
         </div>
-        <div className="flex items-center gap-2 mt-1 flex-wrap">
-          <StatusBadge status={expense.status as 'pending' | 'done'} />
-          {expense.paidDate && (
-            <span className="text-xs text-muted-foreground" data-testid={`text-expense-paid-date-${expense.id}`}>
-              Paid: {formatDate(expense.paidDate)}
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="font-medium text-sm truncate" data-testid={`text-expense-label-${expense.id}`}>
+              {expense.label}
             </span>
-          )}
+            <div className="font-mono font-semibold text-destructive text-sm whitespace-nowrap" data-testid={`text-expense-amount-${expense.id}`}>
+              {formatCurrency(expense.amount, currencyCode)}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap mb-2">
+            {expense.recurring && <RecurringBadge />}
+            {expense.kind === 'CARD_BILL' && (
+              <Badge variant="outline" className="text-xs gap-1">
+                <CreditCard className="h-3 w-3" />
+                Card
+              </Badge>
+            )}
+            {expense.kind === 'LOAN' && (
+              <Badge variant="outline" className="text-xs gap-1">
+                <DollarSign className="h-3 w-3" />
+                Loan
+              </Badge>
+            )}
+            <StatusBadge status={expense.status as 'pending' | 'done'} />
+            {expense.paidDate && (
+              <span className="text-xs text-muted-foreground" data-testid={`text-expense-paid-date-${expense.id}`}>
+                Paid: {formatDate(expense.paidDate)}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1 justify-end">
+            {expense.kind === 'REGULAR' && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10"
+                onClick={() => onEdit(expense)}
+                data-testid={`button-edit-expense-${expense.id}`}
+                disabled={deletingId === expense.id}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
+            {(expense.kind === 'REGULAR' || expense.kind === 'CARD_BILL') && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10 text-destructive hover:text-destructive"
+                onClick={() => onDelete(expense.id)}
+                data-testid={`button-delete-expense-${expense.id}`}
+                disabled={deletingId === expense.id}
+              >
+                {deletingId === expense.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="font-mono font-semibold text-destructive" data-testid={`text-expense-amount-${expense.id}`}>
-        {formatCurrency(expense.amount, currencyCode)}
-      </div>
+      {/* Desktop Layout: Single row */}
+      <div className="hidden sm:flex items-center gap-3">
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing touch-none"
+        >
+          <GripVertical className="h-5 w-5 text-muted-foreground" />
+        </div>
 
-      <div className="flex items-center gap-1">
-        {expense.kind === 'REGULAR' && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => onEdit(expense)}
-            data-testid={`button-edit-expense-${expense.id}`}
-            disabled={deletingId === expense.id}
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-        )}
-        {(expense.kind === 'REGULAR' || expense.kind === 'CARD_BILL') && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-destructive hover:text-destructive"
-            onClick={() => onDelete(expense.id)}
-            data-testid={`button-delete-expense-${expense.id}`}
-            disabled={deletingId === expense.id}
-          >
-            {deletingId === expense.id ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="h-4 w-4" />
+        <div className="relative flex items-center justify-center h-5 w-5">
+          {pendingStatusId === expense.id ? (
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          ) : (
+            <Checkbox
+              checked={expense.status === 'done'}
+              onCheckedChange={() => onToggleStatus(expense.id, expense.status)}
+              className="h-5 w-5"
+              data-testid={`checkbox-expense-${expense.id}`}
+            />
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium" data-testid={`text-expense-label-${expense.id}`}>
+              {expense.label}
+            </span>
+            {expense.recurring && <RecurringBadge />}
+            {expense.kind === 'CARD_BILL' && (
+              <Badge variant="outline" className="text-xs gap-1">
+                <CreditCard className="h-3 w-3" />
+                Card
+              </Badge>
             )}
-          </Button>
-        )}
+            {expense.kind === 'LOAN' && (
+              <Badge variant="outline" className="text-xs gap-1">
+                <DollarSign className="h-3 w-3" />
+                Loan
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <StatusBadge status={expense.status as 'pending' | 'done'} />
+            {expense.paidDate && (
+              <span className="text-xs text-muted-foreground" data-testid={`text-expense-paid-date-${expense.id}`}>
+                Paid: {formatDate(expense.paidDate)}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="font-mono font-semibold text-destructive" data-testid={`text-expense-amount-${expense.id}`}>
+          {formatCurrency(expense.amount, currencyCode)}
+        </div>
+
+        <div className="flex items-center gap-1">
+          {expense.kind === 'REGULAR' && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => onEdit(expense)}
+              data-testid={`button-edit-expense-${expense.id}`}
+              disabled={deletingId === expense.id}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+          )}
+          {(expense.kind === 'REGULAR' || expense.kind === 'CARD_BILL') && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-destructive hover:text-destructive"
+              onClick={() => onDelete(expense.id)}
+              data-testid={`button-delete-expense-${expense.id}`}
+              disabled={deletingId === expense.id}
+            >
+              {deletingId === expense.id ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

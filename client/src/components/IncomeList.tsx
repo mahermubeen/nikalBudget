@@ -79,76 +79,151 @@ function SortableIncomeItem({ income, currencyCode, pendingStatusId, deletingId,
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-3 p-3 rounded-lg border hover-elevate"
+      className="p-3 rounded-lg border hover-elevate"
       data-testid={`item-income-${income.id}`}
     >
-      <div
-        {...attributes}
-        {...listeners}
-        className="cursor-grab active:cursor-grabbing touch-none"
-      >
-        <GripVertical className="h-5 w-5 text-muted-foreground" />
-      </div>
-
-      <div className="relative flex items-center justify-center h-5 w-5">
-        {pendingStatusId === income.id ? (
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-        ) : (
-          <Checkbox
-            checked={income.status === 'done'}
-            onCheckedChange={() => onToggleStatus(income.id, income.status)}
-            className="h-5 w-5"
-            data-testid={`checkbox-income-${income.id}`}
-          />
-        )}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium" data-testid={`text-income-source-${income.id}`}>
-            {income.source}
-          </span>
-          {income.recurring && <RecurringBadge />}
-        </div>
-        <div className="flex items-center gap-2 mt-1 flex-wrap">
-          <StatusBadge status={income.status as 'pending' | 'done'} />
-          {income.paidDate && (
-            <span className="text-xs text-muted-foreground" data-testid={`text-income-paid-date-${income.id}`}>
-              Paid: {formatDate(income.paidDate)}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div className="font-mono font-semibold text-success" data-testid={`text-income-amount-${income.id}`}>
-        {formatCurrency(income.amount, currencyCode)}
-      </div>
-
-      <div className="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={() => onEdit(income)}
-          data-testid={`button-edit-income-${income.id}`}
-          disabled={deletingId === income.id}
+      {/* Mobile Layout: Stack vertically */}
+      <div className="flex items-start gap-2 sm:hidden">
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing touch-none mt-1"
         >
-          <Pencil className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-destructive hover:text-destructive"
-          onClick={() => onDelete(income.id)}
-          data-testid={`button-delete-income-${income.id}`}
-          disabled={deletingId === income.id}
-        >
-          {deletingId === income.id ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </div>
+
+        <div className="relative flex items-center justify-center h-5 w-5 mt-1 flex-shrink-0">
+          {pendingStatusId === income.id ? (
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
           ) : (
-            <Trash2 className="h-4 w-4" />
+            <Checkbox
+              checked={income.status === 'done'}
+              onCheckedChange={() => onToggleStatus(income.id, income.status)}
+              className="h-5 w-5"
+              data-testid={`checkbox-income-${income.id}`}
+            />
           )}
-        </Button>
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="font-medium text-sm" data-testid={`text-income-source-${income.id}`}>
+              {income.source}
+            </span>
+            <div className="font-mono font-semibold text-success text-sm whitespace-nowrap" data-testid={`text-income-amount-${income.id}`}>
+              {formatCurrency(income.amount, currencyCode)}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap mb-2">
+            {income.recurring && <RecurringBadge />}
+            <StatusBadge status={income.status as 'pending' | 'done'} />
+            {income.paidDate && (
+              <span className="text-xs text-muted-foreground" data-testid={`text-income-paid-date-${income.id}`}>
+                Paid: {formatDate(income.paidDate)}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1 justify-end">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10"
+              onClick={() => onEdit(income)}
+              data-testid={`button-edit-income-${income.id}`}
+              disabled={deletingId === income.id}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 text-destructive hover:text-destructive"
+              onClick={() => onDelete(income.id)}
+              data-testid={`button-delete-income-${income.id}`}
+              disabled={deletingId === income.id}
+            >
+              {deletingId === income.id ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Desktop Layout: Single row */}
+      <div className="hidden sm:flex items-center gap-3">
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing touch-none"
+        >
+          <GripVertical className="h-5 w-5 text-muted-foreground" />
+        </div>
+
+        <div className="relative flex items-center justify-center h-5 w-5">
+          {pendingStatusId === income.id ? (
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          ) : (
+            <Checkbox
+              checked={income.status === 'done'}
+              onCheckedChange={() => onToggleStatus(income.id, income.status)}
+              className="h-5 w-5"
+              data-testid={`checkbox-income-${income.id}`}
+            />
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium" data-testid={`text-income-source-${income.id}`}>
+              {income.source}
+            </span>
+            {income.recurring && <RecurringBadge />}
+          </div>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <StatusBadge status={income.status as 'pending' | 'done'} />
+            {income.paidDate && (
+              <span className="text-xs text-muted-foreground" data-testid={`text-income-paid-date-${income.id}`}>
+                Paid: {formatDate(income.paidDate)}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="font-mono font-semibold text-success" data-testid={`text-income-amount-${income.id}`}>
+          {formatCurrency(income.amount, currencyCode)}
+        </div>
+
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => onEdit(income)}
+            data-testid={`button-edit-income-${income.id}`}
+            disabled={deletingId === income.id}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-destructive hover:text-destructive"
+            onClick={() => onDelete(income.id)}
+            data-testid={`button-delete-income-${income.id}`}
+            disabled={deletingId === income.id}
+          >
+            {deletingId === income.id ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );

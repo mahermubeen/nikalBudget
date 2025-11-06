@@ -68,53 +68,107 @@ function SortableLoanItem({ loan, currencyCode, onEdit, onDelete }: SortableLoan
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-3 p-4 rounded-lg border hover-elevate"
+      className="p-3 rounded-lg border hover-elevate"
       data-testid={`item-loan-${loan.id}`}
     >
-      <div
-        {...attributes}
-        {...listeners}
-        className="cursor-grab active:cursor-grabbing touch-none"
-      >
-        <GripVertical className="h-5 w-5 text-muted-foreground" />
-      </div>
-
-      <div className="h-10 w-10 rounded-lg bg-yellow-500/10 flex items-center justify-center flex-shrink-0">
-        <DollarSign className="h-5 w-5 text-yellow-600 dark:text-yellow-500" />
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="font-semibold" data-testid={`text-loan-name-${loan.id}`}>
-          {loan.name}
-        </div>
-        <div className="text-sm text-muted-foreground mt-1">
-          Next due: {formatDate(loan.nextDueDate)}
-        </div>
-      </div>
-
-      <div className="font-mono font-semibold" data-testid={`text-loan-amount-${loan.id}`}>
-        {formatCurrency(loan.installmentAmount, currencyCode)}
-      </div>
-
-      <div className="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={() => onEdit(loan)}
-          data-testid={`button-edit-loan-${loan.id}`}
+      {/* Mobile Layout */}
+      <div className="flex items-start gap-2 sm:hidden">
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing touch-none mt-1"
         >
-          <Pencil className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-destructive hover:text-destructive"
-          onClick={() => onDelete(loan.id)}
-          data-testid={`button-delete-loan-${loan.id}`}
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </div>
+
+        <div className="h-8 w-8 rounded-lg bg-yellow-500/10 flex items-center justify-center flex-shrink-0 mt-1">
+          <DollarSign className="h-4 w-4 text-yellow-600 dark:text-yellow-500" />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="font-semibold text-sm" data-testid={`text-loan-name-${loan.id}`}>
+              {loan.name}
+            </span>
+            <div className="font-mono font-semibold text-sm whitespace-nowrap" data-testid={`text-loan-amount-${loan.id}`}>
+              {formatCurrency(loan.installmentAmount, currencyCode)}
+            </div>
+          </div>
+
+          <div className="text-xs text-muted-foreground mb-2">
+            Next due: {formatDate(loan.nextDueDate)}
+          </div>
+
+          <div className="flex items-center gap-1 justify-end">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10"
+              onClick={() => onEdit(loan)}
+              data-testid={`button-edit-loan-${loan.id}`}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 text-destructive hover:text-destructive"
+              onClick={() => onDelete(loan.id)}
+              data-testid={`button-delete-loan-${loan.id}`}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Desktop Layout */}
+      <div className="hidden sm:flex items-center gap-3">
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing touch-none"
         >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+          <GripVertical className="h-5 w-5 text-muted-foreground" />
+        </div>
+
+        <div className="h-10 w-10 rounded-lg bg-yellow-500/10 flex items-center justify-center flex-shrink-0">
+          <DollarSign className="h-5 w-5 text-yellow-600 dark:text-yellow-500" />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold" data-testid={`text-loan-name-${loan.id}`}>
+            {loan.name}
+          </div>
+          <div className="text-sm text-muted-foreground mt-1">
+            Next due: {formatDate(loan.nextDueDate)}
+          </div>
+        </div>
+
+        <div className="font-mono font-semibold" data-testid={`text-loan-amount-${loan.id}`}>
+          {formatCurrency(loan.installmentAmount, currencyCode)}
+        </div>
+
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => onEdit(loan)}
+            data-testid={`button-edit-loan-${loan.id}`}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-destructive hover:text-destructive"
+            onClick={() => onDelete(loan.id)}
+            data-testid={`button-delete-loan-${loan.id}`}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );

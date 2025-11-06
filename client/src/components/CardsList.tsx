@@ -80,65 +80,129 @@ function SortableCardItem({ card, currencyCode, currentYear, currentMonth, calcu
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-3 p-4 rounded-lg border hover-elevate"
+      className="p-3 rounded-lg border hover-elevate"
       data-testid={`item-card-${card.id}`}
     >
-      <div
-        {...attributes}
-        {...listeners}
-        className="cursor-grab active:cursor-grabbing touch-none"
-      >
-        <GripVertical className="h-5 w-5 text-muted-foreground" />
-      </div>
+      {/* Mobile Layout */}
+      <div className="flex items-start gap-2 sm:hidden">
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing touch-none mt-1"
+        >
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </div>
 
-      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-        <CreditCard className="h-5 w-5 text-primary" />
-      </div>
+        <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 mt-1">
+          <CreditCard className="h-4 w-4 text-primary" />
+        </div>
 
-      <div className="flex-1 min-w-0">
-        <div className="font-semibold" data-testid={`text-card-nickname-${card.id}`}>
-          {card.nickname}
-        </div>
-        <div className="text-sm text-muted-foreground mt-1">
-          {card.issuer && <span>{card.issuer} </span>}
-          {card.last4 && <span className="font-mono">••{card.last4}</span>}
-        </div>
-        <div className="text-xs text-muted-foreground mt-1">
-          {currentYear && currentMonth && calculateDates(card) ? (
-            <span>{calculateDates(card)}</span>
-          ) : (
-            <span>Statement: Day {card.statementDay} • Due: Day {card.dueDay}</span>
-          )}
-        </div>
-        {card.totalLimit && (
-          <div className="text-xs text-muted-foreground mt-1">
-            <span>Limit: {formatCurrency(parseFloat(card.totalLimit), currencyCode)}</span>
-            {card.availableLimit && (
-              <span> | Available: {formatCurrency(parseFloat(card.availableLimit), currencyCode)}</span>
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-sm mb-1" data-testid={`text-card-nickname-${card.id}`}>
+            {card.nickname}
+          </div>
+          <div className="text-xs text-muted-foreground mb-1">
+            {card.issuer && <span>{card.issuer} </span>}
+            {card.last4 && <span className="font-mono">••{card.last4}</span>}
+          </div>
+          <div className="text-xs text-muted-foreground mb-1">
+            {currentYear && currentMonth && calculateDates(card) ? (
+              <span>{calculateDates(card)}</span>
+            ) : (
+              <span>Statement: Day {card.statementDay} • Due: Day {card.dueDay}</span>
             )}
           </div>
-        )}
+          {card.totalLimit && (
+            <div className="text-xs text-muted-foreground mb-2">
+              <div>Limit: {formatCurrency(parseFloat(card.totalLimit), currencyCode)}</div>
+              {card.availableLimit && (
+                <div>Available: {formatCurrency(parseFloat(card.availableLimit), currencyCode)}</div>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center gap-1 justify-end">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10"
+              onClick={() => onEdit(card)}
+              data-testid={`button-edit-card-${card.id}`}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 text-destructive hover:text-destructive"
+              onClick={() => onDelete(card.id)}
+              data-testid={`button-delete-card-${card.id}`}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       </div>
 
-      <div className="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={() => onEdit(card)}
-          data-testid={`button-edit-card-${card.id}`}
+      {/* Desktop Layout */}
+      <div className="hidden sm:flex items-center gap-3">
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing touch-none"
         >
-          <Pencil className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-destructive hover:text-destructive"
-          onClick={() => onDelete(card.id)}
-          data-testid={`button-delete-card-${card.id}`}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+          <GripVertical className="h-5 w-5 text-muted-foreground" />
+        </div>
+
+        <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+          <CreditCard className="h-5 w-5 text-primary" />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold" data-testid={`text-card-nickname-${card.id}`}>
+            {card.nickname}
+          </div>
+          <div className="text-sm text-muted-foreground mt-1">
+            {card.issuer && <span>{card.issuer} </span>}
+            {card.last4 && <span className="font-mono">••{card.last4}</span>}
+          </div>
+          <div className="text-xs text-muted-foreground mt-1">
+            {currentYear && currentMonth && calculateDates(card) ? (
+              <span>{calculateDates(card)}</span>
+            ) : (
+              <span>Statement: Day {card.statementDay} • Due: Day {card.dueDay}</span>
+            )}
+          </div>
+          {card.totalLimit && (
+            <div className="text-xs text-muted-foreground mt-1">
+              <span>Limit: {formatCurrency(parseFloat(card.totalLimit), currencyCode)}</span>
+              {card.availableLimit && (
+                <span> | Available: {formatCurrency(parseFloat(card.availableLimit), currencyCode)}</span>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => onEdit(card)}
+            data-testid={`button-edit-card-${card.id}`}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-destructive hover:text-destructive"
+            onClick={() => onDelete(card.id)}
+            data-testid={`button-delete-card-${card.id}`}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );

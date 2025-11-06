@@ -88,7 +88,7 @@ export default function Home() {
   const currencyCode = user?.currencyCode || 'PKR';
 
   // Fetch budget data for current month
-  const { data: budgetData, isLoading: budgetLoading } = useQuery<BudgetData>({
+  const { data: budgetData, isLoading: budgetLoading, isFetching: budgetFetching } = useQuery<BudgetData>({
     queryKey: ['/api/budgets', year, month],
     enabled: !!user,
   });
@@ -900,13 +900,14 @@ export default function Home() {
                   }
                 }}
                 onReorder={(items) => reorderIncomes.mutate(items)}
-                pendingStatusId={toggleIncomeStatus.isPending ? toggleIncomeStatus.variables?.id : null}
+                pendingStatusId={toggleIncomeStatus.isPending || budgetFetching ? toggleIncomeStatus.variables?.id : null}
                 deletingId={deleteIncome.isPending ? deleteIncome.variables : null}
                 isAnyMutationPending={
                   toggleIncomeStatus.isPending ||
                   deleteIncome.isPending ||
                   updateIncome.isPending ||
-                  reorderIncomes.isPending
+                  reorderIncomes.isPending ||
+                  budgetFetching
                 }
               />
 
@@ -925,13 +926,14 @@ export default function Home() {
                   }
                 }}
                 onReorder={(items) => reorderExpenses.mutate(items)}
-                pendingStatusId={toggleExpenseStatus.isPending ? toggleExpenseStatus.variables?.id : null}
+                pendingStatusId={toggleExpenseStatus.isPending || budgetFetching ? toggleExpenseStatus.variables?.id : null}
                 deletingId={deleteExpense.isPending ? deleteExpense.variables : null}
                 isAnyMutationPending={
                   toggleExpenseStatus.isPending ||
                   deleteExpense.isPending ||
                   updateExpense.isPending ||
-                  reorderExpenses.isPending
+                  reorderExpenses.isPending ||
+                  budgetFetching
                 }
               />
             </div>
