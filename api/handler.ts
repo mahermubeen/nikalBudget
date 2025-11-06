@@ -459,6 +459,19 @@ async function registerRoutes(app: express.Express) {
       const cardBillExpenses = expenses.filter(exp => exp.kind === 'CARD_BILL');
       const cardsTotal = cardBillExpenses.reduce((sum, exp) => sum + safeParseFloat(exp.amount), 0);
 
+      console.log(`[BUDGET CALC] Card expenses breakdown:`, {
+        totalExpenses: expenses.length,
+        cardBillExpenses: cardBillExpenses.length,
+        cardBillExpensesData: cardBillExpenses.map(exp => ({
+          id: exp.id,
+          label: exp.label,
+          amount: exp.amount,
+          kind: exp.kind,
+          linkedCardStatementId: exp.linkedCardStatementId,
+        })),
+        cardsTotal,
+      });
+
       // Calculate paid card expenses (marked as done)
       const paidCardExpenses = expenses
         .filter(exp => exp.kind === 'CARD_BILL' && exp.status === 'done')
@@ -632,7 +645,15 @@ async function registerRoutes(app: express.Express) {
       const userId = getUserId(req);
       const year = parseInt(req.params.year);
       const month = parseInt(req.params.month);
-      const { label, amount, recurring } = req.body;
+      const { label, amount, recurring, statementId } = req.body;
+
+      console.log(`[CREATE EXPENSE] Received request for ${year}/${month}:`, {
+        label,
+        amount,
+        recurring,
+        statementId,
+        userId,
+      });
 
       if (!label || !amount) {
         return res.status(400).json({ message: "Missing required fields" });
@@ -643,6 +664,43 @@ async function registerRoutes(app: express.Express) {
         budget = await storage.createBudget({ userId, year, month });
       }
 
+      let expenseKind = 'REGULAR';
+      let linkedCardStatementId = null;
+
+      // If statementId is provided, this is a card bill expense
+      if (statementId) {
+        console.log(`[CREATE EXPENSE] StatementId provided: ${statementId}, verifying...`);
+
+        // Verify the statement exists
+        const statement = await storage.getCardStatementById(statementId);
+        if (!statement) {
+          console.error(`[CREATE EXPENSE] Statement not found: ${statementId}`);
+          return res.status(400).json({ message: "Invalid statement ID" });
+        }
+
+        console.log(`[CREATE EXPENSE] Statement found:`, {
+          id: statement.id,
+          cardId: statement.cardId,
+          year: statement.year,
+          month: statement.month,
+          currentTotalDue: statement.totalDue,
+        });
+
+        // Update the totalDue by adding the new expense amount
+        const currentTotalDue = parseFloat(statement.totalDue);
+        const newTotalDue = (currentTotalDue + parseFloat(amount)).toFixed(2);
+        await storage.updateCardStatement(statement.id, {
+          totalDue: newTotalDue,
+        });
+
+        console.log(`[CREATE EXPENSE] Updated statement totalDue from ${currentTotalDue} to ${newTotalDue}`);
+
+        expenseKind = 'CARD_BILL';
+        linkedCardStatementId = statement.id;
+      } else {
+        console.log(`[CREATE EXPENSE] No statementId provided, creating REGULAR expense`);
+      }
+
       const expense = await storage.createExpense({
         budgetId: budget.id,
         label,
@@ -650,13 +708,21 @@ async function registerRoutes(app: express.Express) {
         recurring: recurring || false,
         status: 'pending',
         paidDate: null,
-        kind: 'REGULAR',
-        linkedCardStatementId: null,
+        kind: expenseKind,
+        linkedCardStatementId,
         linkedLoanId: null,
       });
 
+      console.log(`[CREATE EXPENSE] Created expense:`, {
+        id: expense.id,
+        label: expense.label,
+        amount: expense.amount,
+        kind: expense.kind,
+        linkedCardStatementId: expense.linkedCardStatementId,
+      });
+
       // If this is a recurring REGULAR expense, automatically add it to all existing future months
-      if (recurring) {
+      if (recurring && expenseKind === 'REGULAR') {
         await storage.copyRecurringExpenseToFutureMonths(userId, year, month, expense);
       }
 
@@ -670,11 +736,49 @@ async function registerRoutes(app: express.Express) {
   // Expense - Update status
   app.patch('/api/expenses/:id/status', isAuthenticated, async (req: any, res) => {
     try {
+      const userId = getUserId(req);
       const { id } = req.params;
       const { status } = req.body;
 
       if (!status || (status !== 'pending' && status !== 'done')) {
         return res.status(400).json({ message: "Invalid status" });
+      }
+
+      // Get the expense to check if it's linked to a card statement
+      const expense = await storage.getExpenseById(id);
+      if (!expense) {
+        return res.status(404).json({ message: "Expense not found" });
+      }
+
+      // If it's a card bill expense, update the card statement's totalDue and status
+      if (expense.kind === 'CARD_BILL' && expense.linkedCardStatementId) {
+        const statement = await storage.getCardStatementById(expense.linkedCardStatementId);
+        if (statement) {
+          const currentTotalDue = parseFloat(statement.totalDue);
+          const expenseAmount = parseFloat(expense.amount);
+          let newTotalDue;
+          let newStatementStatus = statement.status;
+          let newPaidDate = statement.paidDate;
+
+          if (status === 'done' && expense.status === 'pending') {
+            // Marking as done (paid) - subtract from totalDue
+            newTotalDue = Math.max(0, currentTotalDue - expenseAmount).toFixed(2);
+          } else if (status === 'pending' && expense.status === 'done') {
+            // Marking back to pending (unpaid) - add back to totalDue and reset statement
+            newTotalDue = (currentTotalDue + expenseAmount).toFixed(2);
+            newStatementStatus = 'pending';
+            newPaidDate = null;
+          } else {
+            // No change in status, keep same totalDue
+            newTotalDue = currentTotalDue.toFixed(2);
+          }
+
+          await storage.updateCardStatement(statement.id, {
+            totalDue: newTotalDue,
+            status: newStatementStatus,
+            paidDate: newPaidDate,
+          });
+        }
       }
 
       await storage.updateExpenseStatus(id, status);
@@ -707,6 +811,55 @@ async function registerRoutes(app: express.Express) {
   app.delete('/api/expenses/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
+
+      // Get the expense first to check if it's linked to a card statement
+      const expense = await storage.getExpenseById(id);
+      if (!expense) {
+        return res.status(404).json({ message: "Expense not found" });
+      }
+
+      // If it's a card bill expense, update the card statement
+      if (expense.kind === 'CARD_BILL' && expense.linkedCardStatementId) {
+        const statement = await storage.getCardStatementById(expense.linkedCardStatementId);
+        if (statement) {
+          const currentTotalDue = parseFloat(statement.totalDue);
+          const expenseAmount = parseFloat(expense.amount);
+
+          if (expense.status === 'pending') {
+            // Expense was added to totalDue when created, so subtract to undo
+            const newTotalDue = Math.max(0, currentTotalDue - expenseAmount).toFixed(2);
+
+            await storage.updateCardStatement(statement.id, {
+              totalDue: newTotalDue,
+            });
+          } else {
+            // Expense is 'done' - was already subtracted from totalDue when paid
+            // Don't change totalDue, just reset statement status
+            await storage.updateCardStatement(statement.id, {
+              status: 'pending',
+              paidDate: null,
+            });
+          }
+
+          // Check if there are any other expenses linked to this statement
+          const allExpenses = await storage.getExpenses(expense.budgetId);
+          const otherCardExpenses = allExpenses.filter(
+            exp => exp.kind === 'CARD_BILL' &&
+                   exp.linkedCardStatementId === expense.linkedCardStatementId &&
+                   exp.id !== expense.id
+          );
+
+          // If no other expenses linked to this statement, reset it to defaults
+          if (otherCardExpenses.length === 0) {
+            await storage.updateCardStatement(statement.id, {
+              totalDue: '0',
+              status: 'pending',
+              paidDate: null,
+            });
+          }
+        }
+      }
+
       await storage.deleteExpense(id);
       res.json({ message: "Expense deleted successfully" });
     } catch (error) {

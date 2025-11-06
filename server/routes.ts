@@ -429,6 +429,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const cardBillExpenses = expenses.filter(exp => exp.kind === 'CARD_BILL');
       const cardsTotal = cardBillExpenses.reduce((sum, exp) => sum + safeParseFloat(exp.amount), 0);
 
+      console.log(`[BUDGET CALC] Card expenses breakdown:`, {
+        totalExpenses: expenses.length,
+        cardBillExpenses: cardBillExpenses.length,
+        cardBillExpensesData: cardBillExpenses.map(exp => ({
+          id: exp.id,
+          label: exp.label,
+          amount: exp.amount,
+          kind: exp.kind,
+          linkedCardStatementId: exp.linkedCardStatementId,
+        })),
+        cardsTotal,
+      });
+
       // Calculate paid card expenses (marked as done)
       const paidCardExpenses = expenses
         .filter(exp => exp.kind === 'CARD_BILL' && exp.status === 'done')
@@ -605,6 +618,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const month = parseInt(req.params.month);
       const { label, amount, recurring, statementId } = req.body;
 
+      console.log(`[CREATE EXPENSE] Received request for ${year}/${month}:`, {
+        label,
+        amount,
+        recurring,
+        statementId,
+        userId,
+      });
+
       if (!label || !amount) {
         return res.status(400).json({ message: "Missing required fields" });
       }
@@ -620,11 +641,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // If statementId is provided, this is a card bill expense
       if (statementId) {
+        console.log(`[CREATE EXPENSE] StatementId provided: ${statementId}, verifying...`);
+
         // Verify the statement exists
         const statement = await storage.getCardStatementById(statementId);
         if (!statement) {
+          console.error(`[CREATE EXPENSE] Statement not found: ${statementId}`);
           return res.status(400).json({ message: "Invalid statement ID" });
         }
+
+        console.log(`[CREATE EXPENSE] Statement found:`, {
+          id: statement.id,
+          cardId: statement.cardId,
+          year: statement.year,
+          month: statement.month,
+          currentTotalDue: statement.totalDue,
+        });
 
         // Update the totalDue by adding the new expense amount
         const currentTotalDue = parseFloat(statement.totalDue);
@@ -633,8 +665,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           totalDue: newTotalDue,
         });
 
+        console.log(`[CREATE EXPENSE] Updated statement totalDue from ${currentTotalDue} to ${newTotalDue}`);
+
         expenseKind = 'CARD_BILL';
         linkedCardStatementId = statement.id;
+      } else {
+        console.log(`[CREATE EXPENSE] No statementId provided, creating REGULAR expense`);
       }
 
       const expense = await storage.createExpense({
@@ -647,6 +683,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         kind: expenseKind,
         linkedCardStatementId,
         linkedLoanId: null,
+      });
+
+      console.log(`[CREATE EXPENSE] Created expense:`, {
+        id: expense.id,
+        label: expense.label,
+        amount: expense.amount,
+        kind: expense.kind,
+        linkedCardStatementId: expense.linkedCardStatementId,
       });
 
       // If this is a recurring REGULAR expense, automatically add it to all existing future months

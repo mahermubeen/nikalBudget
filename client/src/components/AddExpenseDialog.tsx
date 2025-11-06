@@ -121,13 +121,16 @@ export function AddExpenseDialog({ open, onOpenChange, onAdd, onUpdate, initialD
 
     // If card is selected, statement must be selected
     if (selectedCardId && selectedCardId !== "none" && !selectedStatementId) {
+      console.error('[AddExpenseDialog] Card selected but no statement selected');
       return;
     }
 
     if (initialData && onUpdate) {
       onUpdate(initialData.id, { label: label.trim(), amount, recurring });
     } else {
-      onAdd({ label: label.trim(), amount, recurring, statementId: selectedStatementId });
+      const expenseData = { label: label.trim(), amount, recurring, statementId: selectedStatementId };
+      console.log('[AddExpenseDialog] Submitting expense:', expenseData);
+      onAdd(expenseData);
     }
   };
 
