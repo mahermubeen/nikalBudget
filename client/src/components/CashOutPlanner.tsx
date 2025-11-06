@@ -97,6 +97,23 @@ export function CashOutPlanner({
     }));
   };
 
+  const handleInputChange = (cardId: string, inputValue: string) => {
+    const card = cards.find(c => c.id === cardId);
+    if (!card) return;
+
+    // Parse the input value
+    const parsedValue = parseAmount(inputValue);
+
+    // If empty or invalid, set to 0
+    if (isNaN(parsedValue) || parsedValue < 0) {
+      handleWithdrawalChange(cardId, 0);
+      return;
+    }
+
+    // Update with parsed value (validation will happen in handleWithdrawalChange)
+    handleWithdrawalChange(cardId, parsedValue);
+  };
+
   const totalWithdrawal = Object.values(withdrawals).reduce((sum, val) => sum + val, 0);
   const totalCoverage = totalWithdrawal;
   const hasErrors = Object.keys(errors).length > 0;
@@ -176,6 +193,23 @@ export function CashOutPlanner({
                           className="w-full"
                           data-testid={`slider-card-${card.id}`}
                         />
+
+                        {/* Input field for manual entry */}
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor={`input-${card.id}`} className="text-xs whitespace-nowrap">
+                            Amount:
+                          </Label>
+                          <Input
+                            id={`input-${card.id}`}
+                            type="text"
+                            inputMode="numeric"
+                            value={withdrawal.toString()}
+                            onChange={(e) => handleInputChange(card.id, e.target.value)}
+                            className="h-10 font-mono text-right"
+                            data-testid={`input-card-${card.id}`}
+                          />
+                        </div>
+
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span>0</span>
                           <span>{formatCurrency(card.availableLimit, currencyCode)}</span>
