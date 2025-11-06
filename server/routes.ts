@@ -425,6 +425,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Calculate totals
       const incomeTotal = incomes.reduce((sum, inc) => sum + safeParseFloat(inc.amount), 0);
 
+      // Calculate paid income only (marked as done)
+      const paidIncomeTotal = incomes
+        .filter(inc => inc.status === 'done')
+        .reduce((sum, inc) => sum + safeParseFloat(inc.amount), 0);
+
       // Cards total: sum of all CARD_BILL expenses (regardless of payment status)
       const cardBillExpenses = expenses.filter(exp => exp.kind === 'CARD_BILL');
       const cardsTotal = cardBillExpenses.reduce((sum, exp) => sum + safeParseFloat(exp.amount), 0);
@@ -469,6 +474,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         expensesRaw: expenses.map(exp => ({ id: exp.id, label: exp.label, amount: exp.amount, kind: exp.kind })),
         totalExpenses,
         incomeTotal,
+        paidIncomeTotal,
         nonCardExpensesTotal,
       });
 
@@ -478,9 +484,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // balanceUsed stores total cash-out amount
       const balanceUsed = safeParseFloat(budget.balanceUsed || '0');
 
-      // Balance: Income minus all paid expenses (card bills + regular + loans)
-      // Cash-outs are already included in incomeTotal (as income items)
-      const balance = incomeTotal - paidCardExpenses - paidNonCardExpenses;
+      // Balance: PAID income minus all paid expenses (card bills + regular + loans)
+      // Only count income that has been received (marked as done)
+      const balance = paidIncomeTotal - paidCardExpenses - paidNonCardExpenses;
 
       const need = Math.max(0, nonCardExpensesTotal - afterCardPayments);
 

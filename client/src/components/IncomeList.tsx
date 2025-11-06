@@ -45,18 +45,21 @@ interface IncomeListProps {
   onDelete: (id: string) => void;
   onReorder: (items: Income[]) => void;
   pendingStatusId?: string | null;
+  deletingId?: string | null;
+  isAnyMutationPending?: boolean;
 }
 
 interface SortableIncomeItemProps {
   income: Income;
   currencyCode: string;
   pendingStatusId?: string | null;
+  deletingId?: string | null;
   onToggleStatus: (id: string, currentStatus: string) => void;
   onEdit: (income: Income) => void;
   onDelete: (id: string) => void;
 }
 
-function SortableIncomeItem({ income, currencyCode, pendingStatusId, onToggleStatus, onEdit, onDelete }: SortableIncomeItemProps) {
+function SortableIncomeItem({ income, currencyCode, pendingStatusId, deletingId, onToggleStatus, onEdit, onDelete }: SortableIncomeItemProps) {
   const {
     attributes,
     listeners,
@@ -128,6 +131,7 @@ function SortableIncomeItem({ income, currencyCode, pendingStatusId, onToggleSta
           className="h-8 w-8"
           onClick={() => onEdit(income)}
           data-testid={`button-edit-income-${income.id}`}
+          disabled={deletingId === income.id}
         >
           <Pencil className="h-4 w-4" />
         </Button>
@@ -137,15 +141,20 @@ function SortableIncomeItem({ income, currencyCode, pendingStatusId, onToggleSta
           className="h-8 w-8 text-destructive hover:text-destructive"
           onClick={() => onDelete(income.id)}
           data-testid={`button-delete-income-${income.id}`}
+          disabled={deletingId === income.id}
         >
-          <Trash2 className="h-4 w-4" />
+          {deletingId === income.id ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Trash2 className="h-4 w-4" />
+          )}
         </Button>
       </div>
     </div>
   );
 }
 
-export function IncomeList({ incomes, currencyCode, onAdd, onToggleStatus, onEdit, onDelete, onReorder, pendingStatusId }: IncomeListProps) {
+export function IncomeList({ incomes, currencyCode, onAdd, onToggleStatus, onEdit, onDelete, onReorder, pendingStatusId, deletingId, isAnyMutationPending }: IncomeListProps) {
   const total = incomes.reduce((sum, inc) => sum + parseFloat(inc.amount || '0'), 0);
 
   const sensors = useSensors(
@@ -196,30 +205,36 @@ export function IncomeList({ incomes, currencyCode, onAdd, onToggleStatus, onEdi
             No income items yet. Add your first one!
           </p>
         ) : (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext
-              items={incomes.map(inc => inc.id)}
-              strategy={verticalListSortingStrategy}
+          <div className="relative">
+            {isAnyMutationPending && (
+              <div className="absolute inset-0 bg-background/50 z-10 rounded-lg" />
+            )}
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
             >
-              <div className="space-y-2">
-                {incomes.map((income) => (
-                  <SortableIncomeItem
-                    key={income.id}
-                    income={income}
-                    currencyCode={currencyCode}
-                    pendingStatusId={pendingStatusId}
-                    onToggleStatus={onToggleStatus}
-                    onEdit={onEdit}
-                    onDelete={onDelete}
-                  />
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
+              <SortableContext
+                items={incomes.map(inc => inc.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="space-y-2">
+                  {incomes.map((income) => (
+                    <SortableIncomeItem
+                      key={income.id}
+                      income={income}
+                      currencyCode={currencyCode}
+                      pendingStatusId={pendingStatusId}
+                      deletingId={deletingId}
+                      onToggleStatus={onToggleStatus}
+                      onEdit={onEdit}
+                      onDelete={onDelete}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          </div>
         )}
       </CardContent>
     </Card>

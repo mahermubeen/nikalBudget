@@ -901,8 +901,15 @@ export default function Home() {
                 }}
                 onReorder={(items) => reorderIncomes.mutate(items)}
                 pendingStatusId={toggleIncomeStatus.isPending ? toggleIncomeStatus.variables?.id : null}
+                deletingId={deleteIncome.isPending ? deleteIncome.variables : null}
+                isAnyMutationPending={
+                  toggleIncomeStatus.isPending ||
+                  deleteIncome.isPending ||
+                  updateIncome.isPending ||
+                  reorderIncomes.isPending
+                }
               />
-              
+
               <ExpenseList
                 expenses={expenses}
                 currencyCode={currencyCode}
@@ -919,6 +926,13 @@ export default function Home() {
                 }}
                 onReorder={(items) => reorderExpenses.mutate(items)}
                 pendingStatusId={toggleExpenseStatus.isPending ? toggleExpenseStatus.variables?.id : null}
+                deletingId={deleteExpense.isPending ? deleteExpense.variables : null}
+                isAnyMutationPending={
+                  toggleExpenseStatus.isPending ||
+                  deleteExpense.isPending ||
+                  updateExpense.isPending ||
+                  reorderExpenses.isPending
+                }
               />
             </div>
 
