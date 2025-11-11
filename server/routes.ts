@@ -469,6 +469,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .filter(exp => exp.kind !== 'CARD_BILL' && exp.status === 'pending')
         .reduce((sum, exp) => sum + safeParseFloat(exp.amount), 0);
 
+      // Pending card bills: Only PENDING (unpaid) card bills
+      const pendingCardBills = expenses
+        .filter(exp => exp.kind === 'CARD_BILL' && exp.status === 'pending')
+        .reduce((sum, exp) => sum + safeParseFloat(exp.amount), 0);
+
       // Total expenses: all expenses combined (regardless of payment status)
       const totalExpenses = expenses.reduce((sum, exp) => sum + safeParseFloat(exp.amount), 0);
 
@@ -484,6 +489,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         paidIncomeTotal,
         nonCardExpensesTotal,
         pendingNonCardExpenses,
+        pendingCardBills,
       });
 
       // After card payments: always use total cards (not just unpaid) so it doesn't change when marking as done
@@ -496,8 +502,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Only count income that has been received (marked as done)
       const balance = paidIncomeTotal - paidCardExpenses - paidNonCardExpenses;
 
-      // Need: Only consider PENDING non-card expenses (not already paid)
-      const need = Math.max(0, pendingNonCardExpenses - afterCardPayments);
+      // Need: Calculate how much cash-out is needed to cover ALL pending expenses
+      // Total pending expenses = pending card bills + pending non-card expenses
+      const totalPendingExpenses = pendingCardBills + pendingNonCardExpenses;
+
+      // If balance is sufficient to cover all pending expenses, no cash-out needed
+      // Otherwise, need to cash out the difference
+      const need = Math.max(0, totalPendingExpenses - balance);
 
       res.json({
         budget,
