@@ -558,13 +558,24 @@ async function registerRoutes(app: express.Express) {
       // Only count income that has been received (marked as done)
       const balance = paidIncomeTotal - paidCardExpenses - paidNonCardExpenses;
 
-      // Need: Calculate how much cash-out is needed to cover ALL pending expenses
-      // Total pending expenses = pending card bills + pending non-card expenses
-      const totalPendingExpenses = pendingCardBills + pendingNonCardExpenses;
+      // Need: Priority-based calculation
+      // Priority 1: Pay pending card bills first (if balance is insufficient)
+      // Priority 2: Pay other expenses (only after card bills are covered)
+      let need = 0;
+      let needType = 'none';
 
-      // If balance is sufficient to cover all pending expenses, no cash-out needed
-      // Otherwise, need to cash out the difference
-      const need = Math.max(0, totalPendingExpenses - balance);
+      if (pendingCardBills > 0 && balance < pendingCardBills) {
+        // Balance is insufficient to pay card bills - this is PRIORITY
+        // Show only the amount needed to cover card bills
+        need = pendingCardBills - balance;
+        needType = 'card_bills';
+      } else if (pendingNonCardExpenses > 0) {
+        // Card bills are covered (or no pending card bills)
+        // Now show the amount needed for other expenses
+        const balanceAfterCards = balance - pendingCardBills;
+        need = Math.max(0, pendingNonCardExpenses - balanceAfterCards);
+        needType = 'other_expenses';
+      }
 
       console.log('[CASH-OUT NEED]', {
         balance: balance.toFixed(2),
@@ -573,7 +584,7 @@ async function registerRoutes(app: express.Express) {
         paidNonCardExpenses: paidNonCardExpenses.toFixed(2),
         pendingCardBills: pendingCardBills.toFixed(2),
         pendingNonCardExpenses: pendingNonCardExpenses.toFixed(2),
-        totalPendingExpenses: totalPendingExpenses.toFixed(2),
+        needType,
         calculatedNeed: need.toFixed(2),
       });
 
