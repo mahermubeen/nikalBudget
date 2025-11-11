@@ -4,6 +4,9 @@ import express, { Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 import { storage } from "../server/storage";
 import { setupAuth, isAuthenticated, getUserId } from "../server/supabaseAuth";
+import { db } from "../server/db";
+import { budgets } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 // Extend Express Request
 declare module "http" {
@@ -133,6 +136,8 @@ async function registerRoutes(app: express.Express) {
         if (card.totalLimit) {
           const totalLimitNum = parseFloat(card.totalLimit);
           availableLimit = (totalLimitNum - totalDueAmount - cashOutAmount).toFixed(2);
+
+          console.log(`[CARD LIMIT] ${card.nickname}: limit=${totalLimitNum}, pending due=${totalDueAmount}, cash-out=${cashOutAmount}, available=${availableLimit}`);
         }
 
         return {
@@ -328,8 +333,8 @@ async function registerRoutes(app: express.Express) {
       console.log(`Returning ${statements.length} statements`);
       res.json({ statements });
     } catch (error) {
-      console.error("Error fetching statements:", error);
-      res.status(500).json({ message: "Failed to fetch statements" });
+      console.error("Error fetching card statements:", error);
+      res.status(500).json({ message: "Failed to fetch card statements", error: String(error) });
     }
   });
 
@@ -492,6 +497,11 @@ async function registerRoutes(app: express.Express) {
         .filter(exp => exp.kind !== 'CARD_BILL')
         .reduce((sum, exp) => sum + safeParseFloat(exp.amount), 0);
 
+      // Pending non-card expenses: Only PENDING (unpaid) non-card expenses
+      const pendingNonCardExpenses = expenses
+        .filter(exp => exp.kind !== 'CARD_BILL' && exp.status === 'pending')
+        .reduce((sum, exp) => sum + safeParseFloat(exp.amount), 0);
+
       // Total expenses: all expenses combined (regardless of payment status)
       const totalExpenses = expenses.reduce((sum, exp) => sum + safeParseFloat(exp.amount), 0);
 
@@ -501,11 +511,12 @@ async function registerRoutes(app: express.Express) {
         year,
         month,
         expensesCount: expenses.length,
-        expensesRaw: expenses.map(exp => ({ id: exp.id, label: exp.label, amount: exp.amount, kind: exp.kind })),
+        expensesRaw: expenses.map(exp => ({ id: exp.id, label: exp.label, amount: exp.amount, kind: exp.kind, status: exp.status })),
         totalExpenses,
         incomeTotal,
         paidIncomeTotal,
         nonCardExpensesTotal,
+        pendingNonCardExpenses,
       });
 
       // After card payments: always use total cards (not just unpaid) so it doesn't change when marking as done
@@ -518,7 +529,8 @@ async function registerRoutes(app: express.Express) {
       // Only count income that has been received (marked as done)
       const balance = paidIncomeTotal - paidCardExpenses - paidNonCardExpenses;
 
-      const need = Math.max(0, nonCardExpensesTotal - afterCardPayments);
+      // Need: Only consider PENDING non-card expenses (not already paid)
+      const need = Math.max(0, pendingNonCardExpenses - afterCardPayments);
 
       res.json({
         budget,
@@ -769,11 +781,21 @@ async function registerRoutes(app: express.Express) {
           if (status === 'done' && expense.status === 'pending') {
             // Marking as done (paid) - subtract from totalDue
             newTotalDue = Math.max(0, currentTotalDue - expenseAmount).toFixed(2);
+
+            // Mark statement as done and set paid date
+            newStatementStatus = 'done';
+            newPaidDate = new Date().toISOString().split('T')[0];
           } else if (status === 'pending' && expense.status === 'done') {
             // Marking back to pending (unpaid) - add back to totalDue and reset statement
             newTotalDue = (currentTotalDue + expenseAmount).toFixed(2);
             newStatementStatus = 'pending';
             newPaidDate = null;
+
+            // Reset balanceUsed if this was the last paid card bill
+            const budget = await db.select().from(budgets).where(eq(budgets.id, expense.budgetId)).limit(1);
+            if (budget.length > 0) {
+              await storage.updateBudgetBalanceUsed(budget[0].id, '0');
+            }
           } else {
             // No change in status, keep same totalDue
             newTotalDue = currentTotalDue.toFixed(2);
@@ -840,11 +862,17 @@ async function registerRoutes(app: express.Express) {
             });
           } else {
             // Expense is 'done' - was already subtracted from totalDue when paid
-            // Don't change totalDue, just reset statement status
+            // Don't change totalDue, just reset statement status and balance
             await storage.updateCardStatement(statement.id, {
               status: 'pending',
               paidDate: null,
             });
+
+            // Reset balanceUsed
+            const budget = await db.select().from(budgets).where(eq(budgets.id, expense.budgetId)).limit(1);
+            if (budget.length > 0) {
+              await storage.updateBudgetBalanceUsed(budget[0].id, '0');
+            }
           }
 
           // Check if there are any other expenses linked to this statement
@@ -891,46 +919,109 @@ async function registerRoutes(app: express.Express) {
     }
   });
 
-  // Cash-Out Planner
+  // Cash-Out Planner - Reset cash-out plan
+  app.delete('/api/budgets/:year/:month/cash-out', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getUserId(req);
+      const year = parseInt(req.params.year);
+      const month = parseInt(req.params.month);
+
+      // Get budget
+      const budget = await storage.getBudget(userId, year, month);
+      if (!budget) {
+        return res.status(404).json({ message: "Budget not found" });
+      }
+
+      // Delete all cash-out incomes
+      const existingIncomes = await storage.getIncomes(budget.id);
+      for (const income of existingIncomes) {
+        if (income.source.startsWith('Cash-out –')) {
+          await storage.deleteIncome(income.id);
+        }
+      }
+
+      // Reset balance used to 0
+      await storage.updateBudgetBalanceUsed(budget.id, '0');
+
+      res.json({ message: "Cash-out plan reset successfully" });
+    } catch (error) {
+      console.error("Error resetting cash-out plan:", error);
+      res.status(500).json({ message: "Failed to reset cash-out plan" });
+    }
+  });
+
+  // Cash-Out Planner - Apply withdrawals
   app.post('/api/budgets/:year/:month/cash-out', isAuthenticated, async (req: any, res) => {
     try {
       const userId = getUserId(req);
       const year = parseInt(req.params.year);
       const month = parseInt(req.params.month);
-      const { withdrawals } = req.body;
+      const { withdrawals, balance } = req.body;
 
-      if (!Array.isArray(withdrawals) || withdrawals.length === 0) {
+      if (!Array.isArray(withdrawals)) {
         return res.status(400).json({ message: "Invalid withdrawals data" });
       }
 
+      // Get or create budget
       let budget = await storage.getBudget(userId, year, month);
       if (!budget) {
         budget = await storage.createBudget({ userId, year, month });
       }
 
-      const allCards = await storage.getCreditCards(userId);
-      const cardMap = new Map(allCards.map(c => [c.id, c]));
+      console.log(`[CASH-OUT] Applying cash-out plan for budget ${budget.id}, ${withdrawals.length} withdrawals`);
 
+      // Get existing incomes to check for duplicates
+      const existingIncomes = await storage.getIncomes(budget.id);
+
+      // Get existing cash-out total
+      const existingBalanceUsed = parseFloat(budget.balanceUsed || '0');
+
+      // Calculate new total cash-out amount
+      let newCashOut = 0;
+
+      // Create cash-out incomes for each withdrawal
+      // These are tracked as incomes to increase the balance
       for (const withdrawal of withdrawals) {
-        const { cardId, amount } = withdrawal;
-        const card = cardMap.get(cardId);
+        const card = await storage.getCardById(withdrawal.cardId);
+        if (!card) {
+          console.log(`[CASH-OUT] Card not found: ${withdrawal.cardId}`);
+          continue;
+        }
 
-        if (!card) continue;
-        if (amount <= 0) continue;
+        console.log(`[CASH-OUT] Processing withdrawal from ${card.nickname}: ${withdrawal.amount}`);
 
-        await storage.createExpense({
-          budgetId: budget.id,
-          label: `Cash-out – ${card.nickname}`,
-          amount: amount.toString(),
-          recurring: false,
-          status: 'pending',
-          paidDate: null,
-          kind: 'REGULAR',
-          linkedCardStatementId: null,
-          linkedLoanId: null,
-        });
+        // Check if cash-out income already exists for this card
+        const existingCashOut = existingIncomes.find(inc => inc.source === `Cash-out – ${card.nickname}`);
+        if (existingCashOut) {
+          console.log(`[CASH-OUT] Updating existing cash-out income for ${card.nickname}`);
+          // Update existing income amount
+          const newAmount = (parseFloat(existingCashOut.amount) + withdrawal.amount).toString();
+          await storage.updateIncome(existingCashOut.id, {
+            source: existingCashOut.source,
+            amount: newAmount,
+            recurring: false,
+          });
+        } else {
+          console.log(`[CASH-OUT] Creating new cash-out income for ${card.nickname}`);
+          // Create new income
+          await storage.createIncome({
+            budgetId: budget.id,
+            source: `Cash-out – ${card.nickname}`,
+            amount: withdrawal.amount.toString(),
+            recurring: false,
+            status: 'done', // Mark as done immediately (money withdrawn)
+            paidDate: new Date().toISOString().split('T')[0],
+          });
+        }
+
+        newCashOut += withdrawal.amount;
       }
 
+      // Add new cash-out to existing total
+      const totalCashOut = existingBalanceUsed + newCashOut;
+      await storage.updateBudgetBalanceUsed(budget.id, totalCashOut.toString());
+
+      console.log(`[CASH-OUT] Cash-out plan applied successfully. Total: ${totalCashOut}`);
       res.json({ message: "Cash-out plan applied successfully" });
     } catch (error) {
       console.error("Error applying cash-out plan:", error);

@@ -41,7 +41,19 @@ export function CashOutPlanner({
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Sort cards by available limit (descending - larger limit first)
-  const sortedCards = [...cards].sort((a, b) => b.availableLimit - a.availableLimit);
+  // If limits are similar (within 10% difference), prioritize cards with later due dates
+  const sortedCards = [...cards].sort((a, b) => {
+    const limitDiff = b.availableLimit - a.availableLimit;
+    const limitThreshold = Math.max(a.availableLimit, b.availableLimit) * 0.1;
+
+    // If limits are significantly different, sort by limit
+    if (Math.abs(limitDiff) > limitThreshold) {
+      return limitDiff;
+    }
+
+    // If limits are similar, sort by due date (later dates first)
+    return new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime();
+  });
 
   // Initialize withdrawals with smart suggestion when dialog opens
   useEffect(() => {
@@ -101,8 +113,9 @@ export function CashOutPlanner({
     const card = cards.find(c => c.id === cardId);
     if (!card) return;
 
-    // Parse the input value
-    const parsedValue = parseAmount(inputValue);
+    // Parse the input value and convert to number
+    const parsedString = parseAmount(inputValue);
+    const parsedValue = parseFloat(parsedString);
 
     // If empty or invalid, set to 0
     if (isNaN(parsedValue) || parsedValue < 0) {
