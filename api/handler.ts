@@ -779,6 +779,38 @@ async function registerRoutes(app: express.Express) {
         return res.status(404).json({ message: "Expense not found" });
       }
 
+      // If marking a card bill as DONE, check if there's sufficient balance
+      if (expense.kind === 'CARD_BILL' && status === 'done' && expense.status === 'pending') {
+        // Calculate current balance
+        const budget = await db.select().from(budgets).where(eq(budgets.id, expense.budgetId)).limit(1);
+        if (budget.length > 0) {
+          const budgetData = budget[0];
+          const incomes = await storage.getIncomes(budgetData.id);
+          const expenses = await storage.getExpenses(budgetData.id);
+
+          const paidIncomeTotal = incomes
+            .filter(inc => inc.status === 'done')
+            .reduce((sum, inc) => sum + parseFloat(inc.amount || '0'), 0);
+
+          const paidExpensesTotal = expenses
+            .filter(exp => exp.status === 'done' && exp.id !== id) // Exclude current expense
+            .reduce((sum, exp) => sum + parseFloat(exp.amount || '0'), 0);
+
+          const currentBalance = paidIncomeTotal - paidExpensesTotal;
+          const cardBillAmount = parseFloat(expense.amount);
+
+          if (currentBalance < cardBillAmount) {
+            const shortfall = cardBillAmount - currentBalance;
+            return res.status(400).json({
+              message: `Insufficient balance to pay this card bill. You need ₨${shortfall.toFixed(2)} more. Please do a cash-out from another card or add income from a friend/relative first.`,
+              shortfall: shortfall.toFixed(2),
+              currentBalance: currentBalance.toFixed(2),
+              requiredAmount: cardBillAmount.toFixed(2)
+            });
+          }
+        }
+      }
+
       // If it's a card bill expense, update the card statement's totalDue and status
       if (expense.kind === 'CARD_BILL' && expense.linkedCardStatementId) {
         const statement = await storage.getCardStatementById(expense.linkedCardStatementId);

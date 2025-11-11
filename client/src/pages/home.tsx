@@ -401,7 +401,27 @@ export default function Home() {
         }, 500);
         return;
       }
-      toast({ title: "Error", description: "Failed to update status", variant: "destructive" });
+
+      // Try to extract the error message from the response
+      let errorMessage = "Failed to update status";
+      try {
+        const errorText = error.message;
+        // Error format is "statusCode: jsonString"
+        const jsonPart = errorText.substring(errorText.indexOf(":") + 1).trim();
+        const errorData = JSON.parse(jsonPart);
+        if (errorData.message) {
+          errorMessage = errorData.message;
+        }
+      } catch (e) {
+        // If parsing fails, use the default message
+      }
+
+      toast({
+        title: "Cannot mark as paid",
+        description: errorMessage,
+        variant: "destructive",
+        duration: 6000 // Show for 6 seconds
+      });
     },
   });
 
