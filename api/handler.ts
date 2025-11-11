@@ -445,10 +445,33 @@ async function registerRoutes(app: express.Express) {
       console.log('Fetching data for budget:', budget.id, 'user:', userId);
       const incomes = await storage.getIncomes(budget.id);
       console.log('Fetched incomes:', incomes.length);
-      const expenses = await storage.getExpenses(budget.id);
+      let expenses = await storage.getExpenses(budget.id);
       console.log('Fetched expenses:', expenses.length);
       const cardStatements = await storage.getCardStatementsDueInMonth(userId, year, month);
       console.log('Fetched card statements:', cardStatements.length);
+
+      // Automatically create loan expenses if they don't exist
+      const loans = await storage.getLoans(userId);
+      console.log('Fetched loans:', loans.length);
+      for (const loan of loans) {
+        // Check if a LOAN expense already exists for this loan in this budget
+        const existingLoanExpense = expenses.find(exp => exp.kind === 'LOAN' && exp.linkedLoanId === loan.id);
+        if (!existingLoanExpense) {
+          console.log(`Creating LOAN expense for ${loan.name}`);
+          const newExpense = await storage.createExpense({
+            budgetId: budget.id,
+            label: loan.name,
+            amount: loan.installmentAmount,
+            recurring: true,
+            status: 'pending',
+            paidDate: null,
+            kind: 'LOAN',
+            linkedCardStatementId: null,
+            linkedLoanId: loan.id,
+          });
+          expenses.push(newExpense);
+        }
+      }
 
       // Helper function to safely parse decimal values
       const safeParseFloat = (value: any): number => {
@@ -542,6 +565,17 @@ async function registerRoutes(app: express.Express) {
       // If balance is sufficient to cover all pending expenses, no cash-out needed
       // Otherwise, need to cash out the difference
       const need = Math.max(0, totalPendingExpenses - balance);
+
+      console.log('[CASH-OUT NEED]', {
+        balance: balance.toFixed(2),
+        paidIncomeTotal: paidIncomeTotal.toFixed(2),
+        paidCardExpenses: paidCardExpenses.toFixed(2),
+        paidNonCardExpenses: paidNonCardExpenses.toFixed(2),
+        pendingCardBills: pendingCardBills.toFixed(2),
+        pendingNonCardExpenses: pendingNonCardExpenses.toFixed(2),
+        totalPendingExpenses: totalPendingExpenses.toFixed(2),
+        calculatedNeed: need.toFixed(2),
+      });
 
       res.json({
         budget,
